@@ -1,0 +1,30 @@
+# Build directories
+build/
+build*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Dependencies fetched by CMake
+_deps/
+*/_deps/
+
+# Binaries
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.so
+*.dylib
+
+# IDE / editor files
+.vscode/
+.idea/
+*.user
+*.swp
+.DS_Store
+
+# Backup or logs
+*.log
