@@ -74,7 +74,6 @@ Eigen::Matrix4f makeTransform(const urdf::Pose& pose)
     return T;
 }
 
-// === Load URDF and display meshes ===
 void loadURDFAndDisplay(const std::string& urdf_path)
 {
     std::ifstream urdf_file(urdf_path);
@@ -94,6 +93,55 @@ void loadURDFAndDisplay(const std::string& urdf_path)
 
     std::cout << "✅ Loaded URDF model: " << model->getName() << std::endl;
 
+    // === Mappa nome link → trasformazione globale ===
+    std::map<std::string, Eigen::Matrix4f> global_T;
+
+    // === Ricorsione robusta per calcolare le pose globali ===
+    std::function<void(urdf::LinkConstSharedPtr, const Eigen::Matrix4f&)> recurse;
+    recurse = [&](urdf::LinkConstSharedPtr link, const Eigen::Matrix4f& parent_T) {
+        global_T[link->name] = parent_T;
+
+        for (const auto& joint : link->child_joints) {
+            if (!joint) continue;
+
+            auto child_link = model->getLink(joint->child_link_name);
+            if (!child_link) continue;
+
+            // Trasformazione relativa (pose del joint)
+            const urdf::Pose& pose = joint->parent_to_joint_origin_transform;
+            Eigen::Matrix4f T_rel = Eigen::Matrix4f::Identity();
+
+            Eigen::Vector3f t(pose.position.x, pose.position.y, pose.position.z);
+            double roll, pitch, yaw;
+            pose.rotation.getRPY(roll, pitch, yaw);
+
+            Eigen::AngleAxisf Rx(roll, Eigen::Vector3f::UnitX());
+            Eigen::AngleAxisf Ry(pitch, Eigen::Vector3f::UnitY());
+            Eigen::AngleAxisf Rz(yaw, Eigen::Vector3f::UnitZ());
+            T_rel.block<3,3>(0,0) = (Rz * Ry * Rx).matrix();
+            T_rel.block<3,1>(0,3) = t;
+
+            Eigen::Matrix4f T_child = parent_T * T_rel;
+            recurse(child_link, T_child);
+        }
+    };
+
+    auto root_link = model->getRoot();
+    if (root_link)
+        recurse(root_link, Eigen::Matrix4f::Identity());
+
+    // === Rotazione globale per allineare l'URDF con Polyscope (Z-up) ===
+    Eigen::Matrix4f R_global = Eigen::Matrix4f::Identity();
+    float angle = -M_PI / 2.0f;  // -90° intorno all’asse X
+    Eigen::AngleAxisf Rx(angle, Eigen::Vector3f::UnitX());
+    R_global.block<3,3>(0,0) = Rx.matrix();
+
+    // Applica la rotazione globale a tutte le trasformazioni calcolate
+    for (auto& [name, T] : global_T) {
+        T = R_global * T;
+    }
+
+    // === Visualizza le mesh ===
     for (auto& [name, link] : model->links_) {
         if (!link->visual || !link->visual->geometry) continue;
 
@@ -102,8 +150,7 @@ void loadURDFAndDisplay(const std::string& urdf_path)
 
         std::string mesh_path = mesh->filename;
         if (mesh_path.rfind("package://", 0) == 0) {
-            mesh_path = "graphics/meshes/" +
-                        fs::path(mesh_path.substr(10)).filename().string();
+            mesh_path = "graphics/meshes/" + fs::path(mesh_path.substr(10)).filename().string();
         }
 
         if (!fs::exists(mesh_path)) {
@@ -111,39 +158,69 @@ void loadURDFAndDisplay(const std::string& urdf_path)
             continue;
         }
 
-        // Load STL
+        // === Carica la mesh STL ===
         std::vector<Eigen::Vector3f> vertices;
         std::vector<Eigen::Vector3i> faces;
         if (!loadSTL(mesh_path, vertices, faces)) continue;
 
-        // Compute transform
-        Eigen::Matrix4f T = makeTransform(link->visual->origin);
+        // === Applica la scala del <mesh scale="..."> ===
+        Eigen::Vector3f scale(1.f, 1.f, 1.f);
+        if (mesh) {
+            scale = Eigen::Vector3f(
+                static_cast<float>(mesh->scale.x),
+                static_cast<float>(mesh->scale.y),
+                static_cast<float>(mesh->scale.z));
+        }
 
-        // Register in Polyscope
-        polyscope::SurfaceMesh* psMesh =
-            polyscope::registerSurfaceMesh(name, vertices, faces);
+        for (auto& v : vertices)
+            v = v.cwiseProduct(scale);
 
-        // Convert Eigen::Matrix4f → glm::mat4
+        // === Trasformazione globale del link ===
+        Eigen::Matrix4f T_link = global_T[name];
+
+        // === Offset locale del visual (origin del tag <visual>) ===
+        Eigen::Matrix4f T_visual = Eigen::Matrix4f::Identity();
+        if (link->visual) {
+            const urdf::Pose& vpose = link->visual->origin;
+            Eigen::Vector3f vt(vpose.position.x, vpose.position.y, vpose.position.z);
+            double vroll, vpitch, vyaw;
+            vpose.rotation.getRPY(vroll, vpitch, vyaw);
+            Eigen::AngleAxisf Rx(vroll, Eigen::Vector3f::UnitX());
+            Eigen::AngleAxisf Ry(vpitch, Eigen::Vector3f::UnitY());
+            Eigen::AngleAxisf Rz(vyaw, Eigen::Vector3f::UnitZ());
+            T_visual.block<3,3>(0,0) = (Rz * Ry * Rx).matrix();
+            T_visual.block<3,1>(0,3) = vt;
+        }
+
+        // === Trasformazione totale ===
+        Eigen::Matrix4f T_total = T_link * T_visual;
+
+        // === Converti in glm::mat4 per Polyscope ===
         glm::mat4 transform;
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 4; ++j)
-                transform[i][j] = T(j, i);  // note the transpose!
+                transform[i][j] = T_total(j, i);
 
+        // === Registra in Polyscope ===
+        auto* psMesh = polyscope::registerSurfaceMesh(name, vertices, faces);
         psMesh->setTransform(transform);
         psMesh->setSurfaceColor({0.3, 0.6, 0.8});
         psMesh->setSmoothShade(true);
 
-        std::cout << "Link: " << name << "  (" << mesh_path << ")\n";
+        // Debug log
+        Eigen::Vector3f t_global = T_link.block<3,1>(0,3);
+        std::cout << "Link: " << name
+                  << " rendered at global pos = "
+                  << t_global.transpose()
+                  << " scale = " << scale.transpose() << std::endl;
     }
 }
 
-int main()
-{
+
+
+int main(int argc, char** argv) {
     polyscope::init();
-
-    // Load URDF and display all links
     loadURDFAndDisplay("graphics/urdf/morphy.urdf");
-
     polyscope::show();
     return 0;
 }
