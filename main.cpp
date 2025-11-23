@@ -32,6 +32,28 @@
 
 namespace fs = std::filesystem;
 
+void registerGroundPlaneMesh() {
+    std::vector<Eigen::Vector3f> vertices = {
+        {-2.5f, -2.5f, 0.0f},
+        { 2.5f, -2.5f, 0.0f},
+        { 2.5f,  2.5f, 0.0f},
+        {-2.5f,  2.5f, 0.0f}
+    };
+    Eigen::AngleAxisf Rx(-static_cast<float>(M_PI) / 2.0f, Eigen::Vector3f::UnitX());
+    for (auto& v : vertices) {
+        v = Rx * v;
+    }
+    std::vector<Eigen::Vector3i> faces = {
+        {0, 1, 2},
+        {0, 2, 3}
+    };
+    auto* ground = polyscope::registerSurfaceMesh("ground_plane", vertices, faces);
+    ground->setSurfaceColor({0.75f, 0.75f, 0.75f});
+    ground->setTransparency(0.1f);
+    ground->setSmoothShade(false);
+    ground->setBackFacePolicy(polyscope::BackFacePolicy::Different);
+}
+
 bool loadSTL(const std::string& filename,
              std::vector<Eigen::Vector3f>& vertices,
              std::vector<Eigen::Vector3i>& faces)
@@ -314,7 +336,7 @@ private:
     double nextLogTime_{0.0};
     const double logInterval_{0.5};
     bool followBase_{false};
-    Eigen::Vector3d positionRef_{Eigen::Vector3d(0.0, 0.0, 0.3)};
+    Eigen::Vector3d positionRef_{Eigen::Vector3d(1.0, 1.0, 1.0)};
     Eigen::Vector3d integralError_{Eigen::Vector3d::Zero()};
     PIDGains gains_;
 
@@ -449,12 +471,15 @@ int main(int argc, char** argv) {
         backend = "openGL_mock";
         polyscope::options::usePrefsFile = false;
     }
-    const bool runSimulation = (std::getenv("MORPHY_RUN_SIM") != nullptr);
+    const bool viewOnly = (std::getenv("MORPHY_VIEW_ONLY") != nullptr);
+    const bool runSimulation = !viewOnly;
 
     polyscope::init(backend);
+    polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
+    registerGroundPlaneMesh();
 
     const fs::path urdfPath = resolveResource("graphics/urdf/morphy.urdf");
-    if (!runSimulation) {
+    if (viewOnly) {
         UrdfRig rig;
         if (!rig.initialize(urdfPath.string())) {
             return 1;
