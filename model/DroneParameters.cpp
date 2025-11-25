@@ -1,6 +1,9 @@
 #include "DroneParameters.h"
 
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
+#include <string>
 
 namespace {
 Eigen::Matrix4d pose7ToMatrix(const std::vector<double>& pose) {
@@ -26,6 +29,21 @@ Eigen::Matrix3d diagMatrix(double x, double y, double z) {
     M(1,1) = y;
     M(2,2) = z;
     return M;
+}
+
+IntegratorType parseIntegrator(const std::string& name) {
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (lower == "euler" || lower == "explicit_euler") return IntegratorType::ExplicitEuler;
+    if (lower == "rk4" || lower == "rungekutta4") return IntegratorType::Rk4;
+    if (lower == "implicit_euler" || lower == "euler_implicit" || lower == "impliciteuler") {
+        return IntegratorType::ImplicitEuler;
+    }
+    if (lower == "irk" || lower == "implicit_midpoint" || lower == "midpoint") {
+        return IntegratorType::ImplicitMidpoint;
+    }
+    throw std::runtime_error("Unknown integrator: " + name);
 }
 } // namespace
 
@@ -86,6 +104,32 @@ DroneParameters loadDroneParameters(const std::string& path) {
     for (size_t i = 0; i < 4; ++i) {
         params.T_HP[i] = pose7ToMatrix(yaml.nodeAtPath("transforms.T_HP." + HPKeys[i]).asSequence());
     }
+
+    try {
+        params.integrator = parseIntegrator(yaml.nodeAtPath("integrator").asString());
+    } catch (const std::exception&) {
+        params.integrator = IntegratorType::Rk4;
+    }
+
+    try {
+        params.integratorSettings.dt = yaml.nodeAtPath("integrator_settings.dt").asScalar();
+    } catch (const std::exception&) {}
+    try {
+        params.integratorSettings.substeps =
+            static_cast<int>(yaml.nodeAtPath("integrator_settings.substeps").asScalar());
+    } catch (const std::exception&) {}
+    try {
+        params.integratorSettings.implicitMaxIterations =
+            static_cast<int>(yaml.nodeAtPath("integrator_settings.implicit_max_iterations").asScalar());
+    } catch (const std::exception&) {}
+    try {
+        params.integratorSettings.implicitTolerance =
+            yaml.nodeAtPath("integrator_settings.implicit_tolerance").asScalar();
+    } catch (const std::exception&) {}
+    try {
+        params.integratorSettings.implicitFdEps =
+            yaml.nodeAtPath("integrator_settings.implicit_fd_epsilon").asScalar();
+    } catch (const std::exception&) {}
 
     return params;
 }

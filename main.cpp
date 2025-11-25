@@ -25,7 +25,6 @@ int main(int argc, char** argv) {
 
     polyscope::init(backend);
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-    scene::registerGroundPlaneMesh();
 
     const fs::path urdfPath = scene::resolveResource("graphics/urdf/morphy.urdf");
     if (viewOnly) {
