@@ -60,12 +60,18 @@ find_library(URDFDOM_WORLD_LIB urdfdom_world REQUIRED)
 # ============================================================
 add_executable(morphy_viewer
     main.cpp
+    src/SceneUtils.cpp
+    src/UrdfRig.cpp
+    src/DroneSimulationApp.cpp
     model/DroneDynamics.cpp
     model/DroneParameters.cpp
     model/SimpleYaml.cpp
 )
 
-target_include_directories(morphy_viewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/model)
+target_include_directories(morphy_viewer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
 target_link_libraries(morphy_viewer PRIVATE
     polyscope

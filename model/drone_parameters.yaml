@@ -21,7 +21,7 @@ inertia:
 
 morphing_joint:
   b_joint: 0.01
-  k_joint: 0.1
+  k_joint: 1.0
 
 transforms:
   T_BH:
