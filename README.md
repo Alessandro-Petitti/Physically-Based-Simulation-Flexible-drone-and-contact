@@ -6,8 +6,8 @@ This project visualizes and simulates a morphing quadrotor in real time. It coup
 
 - **Parametric dynamics**: The full 41‑state, 18‑constraint system from the Python/CasADi model is reimplemented in C++ using Eigen for linear algebra. The 18×18 block system is assembled every frame to recover linear and angular accelerations for the base and each arm.
 - **Configurable parameters**: All masses, inertias, propeller constants, joint stiffness/damping and rigid transforms are read from `model/drone_parameters.yaml`. No hard-coded values live in the source code.
-- **Polyscope viewer**: Meshes from the URDF (`graphics/urdf/morphy.urdf`) are registered via Assimp. A custom ground plane is added so you can perceive altitude changes clearly.
-- **Runge–Kutta 4 integrator**: The state derivative is advanced with a fixed-step RK4 scheme (2 ms substeps × 5 per frame) implemented in `model/RungeKutta4.h`.
+- **Polyscope viewer**: Meshes from the URDF (`graphics/urdf/morphy.urdf`) are registered via Assimp. The Polyscope ground plane is off by default; enable it from the UI if you need a visual reference at `z = 0`.
+- **Configurable integrators**: Choose between explicit Euler, RK4, implicit Euler, or implicit midpoint IRK. Time step, substeps, and implicit solver settings are read from the YAML.
 - **PID hover controller**: A simple PID tracks a desired world-frame position (default `(1, 1, 1)` m) and distributes the required thrust evenly across motors, saturating at the per-rotor maximum defined in the YAML.
 
 ## Dependencies
@@ -96,6 +96,8 @@ All physical constants live in `model/drone_parameters.yaml`. Important sections
 - `propellers`: thrust and torque coefficients, spin direction, rotor inertia, max thrust.
 - `morphing_joint`: stiffness/damping of the morphing joints.
 - `transforms`: rigid transforms from base to hinge (`T_BH`), hinge to prop (`T_HP`), base to prop (`T_BP`).
+- `integrator`: one of `explicit_euler`, `rk4`, `implicit_euler`, `irk` (implicit midpoint).
+- `integrator_settings`: `dt`, `substeps`, `implicit_max_iterations`, `implicit_tolerance`, `implicit_fd_epsilon`.
 
 Editing this file does not require recompiling; the values are loaded at runtime.
 

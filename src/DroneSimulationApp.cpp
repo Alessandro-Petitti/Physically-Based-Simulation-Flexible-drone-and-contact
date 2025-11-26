@@ -8,8 +8,19 @@
 #include <iostream>
 #include <sstream>
 
-#include <glm/glm.hpp>
 #include <polyscope/view.h>
+
+namespace {
+const char* integratorLabel(IntegratorType type) {
+    switch (type) {
+        case IntegratorType::ExplicitEuler: return "explicit_euler";
+        case IntegratorType::ImplicitEuler: return "implicit_euler";
+        case IntegratorType::ImplicitMidpoint: return "irk_implicit_midpoint";
+        case IntegratorType::Rk4:
+        default: return "rk4";
+    }
+}
+} // namespace
 
 DroneSimulationApp::DroneSimulationApp()
     : dynamics_("model/drone_parameters.yaml"),
@@ -19,6 +30,16 @@ DroneSimulationApp::DroneSimulationApp()
         state_(13 + 4 * i) = 1.0;
     }
     thrust_.setZero();
+    integratorType_ = dynamics_.params().integrator;
+    const auto& settings = dynamics_.params().integratorSettings;
+    dt_ = (settings.dt > 0.0) ? settings.dt : 0.002;
+    substeps_ = std::max(1, settings.substeps);
+    const int maxIt = std::max(1, settings.implicitMaxIterations);
+    const double tol = (settings.implicitTolerance > 0.0) ? settings.implicitTolerance : 1e-6;
+    const double fdEps = (settings.implicitFdEps > 0.0) ? settings.implicitFdEps : 1e-6;
+    implicitEuler_.setConfig(maxIt, tol, fdEps);
+    irk_.setConfig(maxIt, tol, fdEps);
+    logIntegratorSettings();
     std::cout << "Hover thrust per rotor: " << hoverThrust() << " N" << std::endl;
     initRotorData();
 }
@@ -39,18 +60,45 @@ void DroneSimulationApp::step() {
     };
 
     for (int i = 0; i < substeps_; ++i) {
-        state_ = integrator_.step(state_, dt_, dyn);
+        switch (integratorType_) {
+            case IntegratorType::ExplicitEuler:
+                state_ = explicitEuler_.step(state_, dt_, dyn);
+                break;
+            case IntegratorType::ImplicitEuler:
+                state_ = implicitEuler_.step(state_, dt_, dyn);
+                break;
+            case IntegratorType::ImplicitMidpoint:
+                state_ = irk_.step(state_, dt_, dyn);
+                break;
+            case IntegratorType::Rk4:
+            default:
+                state_ = rk4_.step(state_, dt_, dyn);
+                break;
+        }
         normalizeQuaternions();
         simTime_ += dt_;
     }
 
     rig_.update(baseTransform(), jointAngles());
-    updateCamera();
 
     if (simTime_ >= nextLogTime_) {
         logState();
         nextLogTime_ += logInterval_;
     }
+}
+
+void DroneSimulationApp::logIntegratorSettings() const {
+    const auto& s = dynamics_.params().integratorSettings;
+    std::cout << "Integrator: " << integratorLabel(integratorType_)
+              << " | dt: " << dt_
+              << " | substeps: " << substeps_;
+    if (integratorType_ == IntegratorType::ImplicitEuler ||
+        integratorType_ == IntegratorType::ImplicitMidpoint) {
+        std::cout << " | implicit iters: " << s.implicitMaxIterations
+                  << " | tol: " << s.implicitTolerance
+                  << " | fd_eps: " << s.implicitFdEps;
+    }
+    std::cout << std::endl;
 }
 
 void DroneSimulationApp::initRotorData() {
@@ -61,28 +109,6 @@ void DroneSimulationApp::initRotorData() {
         Eigen::Matrix3d R_BP = params.T_BP[i].block<3,3>(0,0);
         rotorDirsB_[i] = R_BP * ez;
     }
-}
-
-void DroneSimulationApp::updateCamera() {
-    if (!followBase_) return;
-    Eigen::Vector3d pos = state_.segment<3>(0);
-    Eigen::Quaterniond q(state_(3), state_(4), state_(5), state_(6));
-    if (q.norm() > 1e-9) q.normalize();
-    Eigen::Matrix3d R = q.toRotationMatrix();
-    Eigen::Vector3d offsetBody(0.0, -0.4, 0.25);
-    Eigen::Vector3d camPos = pos + R * offsetBody;
-    Eigen::Vector3d up = R * Eigen::Vector3d::UnitZ();
-
-    glm::vec3 cam(static_cast<float>(camPos.x()),
-                  static_cast<float>(camPos.y()),
-                  static_cast<float>(camPos.z()));
-    glm::vec3 target(static_cast<float>(pos.x()),
-                     static_cast<float>(pos.y()),
-                     static_cast<float>(pos.z()));
-    glm::vec3 upVec(static_cast<float>(up.x()),
-                    static_cast<float>(up.y()),
-                    static_cast<float>(up.z()));
-    polyscope::view::lookAt(cam, target, upVec);
 }
 
 void DroneSimulationApp::updateController() {

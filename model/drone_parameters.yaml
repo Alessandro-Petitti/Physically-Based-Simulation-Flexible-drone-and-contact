@@ -1,4 +1,11 @@
 base_frame: base_link
+integrator: rk4 # options: explicit_euler, implicit_euler, rk4, irk
+integrator_settings:
+  dt: 0.002
+  substeps: 5
+  implicit_max_iterations: 8
+  implicit_tolerance: 1.0e-6
+  implicit_fd_epsilon: 1.0e-6
 
 mass:
   total: 0.260

@@ -7,7 +7,22 @@
 #include <optional>
 #include <string>
 
+enum class IntegratorType {
+    ExplicitEuler,
+    Rk4,
+    ImplicitEuler,
+    ImplicitMidpoint
+};
+
 struct DroneParameters {
+    struct IntegratorSettings {
+        double dt{0.002};
+        int substeps{5};
+        int implicitMaxIterations{8};
+        double implicitTolerance{1e-6};
+        double implicitFdEps{1e-6};
+    };
+
     double massTotal{0.0};
     double massBase{0.0};
     double massArm{0.0};
@@ -23,6 +38,8 @@ struct DroneParameters {
     std::array<Eigen::Matrix4d, 4> T_BH{};
     std::array<Eigen::Matrix4d, 4> T_HP{};
     std::array<Eigen::Matrix4d, 4> T_BP{};
+    IntegratorType integrator{IntegratorType::Rk4};
+    IntegratorSettings integratorSettings{};
 };
 
 DroneParameters loadDroneParameters(const std::string& path);
