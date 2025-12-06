@@ -101,6 +101,30 @@ All physical constants live in `model/drone_parameters.yaml`. Important sections
 
 Editing this file does not require recompiling; the values are loaded at runtime.
 
+## Convex Hull Utility (optional)
+
+If you want to precompute convex hulls of the meshes:
+
+1) Install extra deps: `sudo apt install libcgal-dev libgmp-dev libmpfr-dev libboost-all-dev assimp-utils`.
+2) Convert STL → OBJ:
+   ```bash
+   mkdir -p graphics/mesh_obj
+   for f in graphics/meshes/*.[sS][tT][lL]; do
+     base=$(basename "${f%.*}")
+     assimp export "$f" "graphics/mesh_obj/${base}.obj"
+   done
+   ```
+3) Build the hull tool:
+   ```bash
+   cmake -S . -B build -DENABLE_MESH_HULL=ON
+   cmake --build build --target mesh_convex_hull
+   ```
+4) Run it (defaults to `graphics/mesh_obj` → `graphics/hulls`):
+   ```bash
+   HULL_IN_DIR=graphics/mesh_obj HULL_OUT_DIR=graphics/hulls ./build/mesh_convex_hull
+   ```
+The tool writes `*_hull.obj` you can load at runtime.
+
 ## Troubleshooting
 
 - **Empty window / missing meshes**: ensure the URDF and meshes under `graphics/` are intact. The program prints a message if any mesh is missing.

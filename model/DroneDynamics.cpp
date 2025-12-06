@@ -6,6 +6,8 @@
 #include <cmath>
 #include <stdexcept>
 #include <sstream>
+#include <chrono>
+#include <iostream>
 
 namespace {
 constexpr double kQuatEps = 1e-12;
@@ -370,11 +372,21 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     assertFinite(A, "matrix A");
     assertFinite(rhs, "rhs b");
 
+        // --- TIMER: linear solve (A z = rhs) ---
+    using clock = std::chrono::high_resolution_clock;
+    auto t0 = clock::now();
+
     Eigen::FullPivLU<Eigen::Matrix<double,18,18>> solver(A);
     if (!solver.isInvertible()) {
         throw std::runtime_error("Dynamics matrix is singular");
     }
     Eigen::Matrix<double,18,1> z = solver.solve(rhs);
+
+    auto t1 = clock::now();
+    double solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    //std::cout << "[TIMER] linear solve (A z = rhs) took " << solve_ms << " ms\n";
+    
+    // --- END TIMER ---
     double maxZ = z.cwiseAbs().maxCoeff();
     if (!(std::isfinite(maxZ) && maxZ < 1e8)) {
         std::ostringstream oss;

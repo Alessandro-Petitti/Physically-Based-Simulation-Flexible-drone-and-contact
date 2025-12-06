@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
+option(ENABLE_MESH_HULL "Build convex hull utility (libigl)" OFF)
+
 # ============================================================
 # 🔹 Eigen
 # ============================================================
@@ -81,6 +83,27 @@ target_link_libraries(morphy_viewer PRIVATE
     ${URDFDOM_MODEL_LIB}
     ${URDFDOM_WORLD_LIB}
 )
+
+# ============================================================
+# 🔹 Convex hull utility (graphics/meshes -> graphics/hulls)
+#    Uses system CGAL + tinyobjloader (no libigl)
+# ============================================================
+if (ENABLE_MESH_HULL)
+  find_package(CGAL REQUIRED COMPONENTS Core)
+
+  add_executable(mesh_convex_hull
+      tools/convex_hull.cpp
+  )
+  target_include_directories(mesh_convex_hull PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/model
+      ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  target_link_libraries(mesh_convex_hull PRIVATE
+      CGAL::CGAL
+      tinyobjloader
+      Eigen3::Eigen
+  )
+endif()
 
 # ============================================================
 # 🔹 Messaggio di configurazione

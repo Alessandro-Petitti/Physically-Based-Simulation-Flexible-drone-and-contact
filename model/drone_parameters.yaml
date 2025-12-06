@@ -1,5 +1,5 @@
 base_frame: base_link
-integrator: rk4 # options: explicit_euler, implicit_euler, rk4, irk
+integrator: irk # options: explicit_euler, implicit_euler, rk4, irk
 integrator_settings:
   dt: 0.002
   substeps: 5
