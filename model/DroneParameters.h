@@ -40,6 +40,8 @@ struct DroneParameters {
     std::array<Eigen::Matrix4d, 4> T_BP{};
     IntegratorType integrator{IntegratorType::Rk4};
     IntegratorSettings integratorSettings{};
+    Eigen::Vector3d x0_pos{Eigen::Vector3d::Zero()};
+    Eigen::Vector4d x0_rotation{1.0, 0.0, 0.0, 0.0}; // wxyz
 };
 
 DroneParameters loadDroneParameters(const std::string& path);

@@ -101,8 +101,11 @@ DroneParameters loadDroneParameters(const std::string& path) {
         "H2_to_motor_2",
         "H3_to_motor_3"
     };
+    Eigen::Matrix3d R_fix_HP = Eigen::AngleAxisd(M_PI * 0.5, Eigen::Vector3d::UnitY()).toRotationMatrix();
     for (size_t i = 0; i < 4; ++i) {
         params.T_HP[i] = pose7ToMatrix(yaml.nodeAtPath("transforms.T_HP." + HPKeys[i]).asSequence());
+        // Inject the missing rotation from URDF joint (0, pi/2, 0)
+        params.T_HP[i].block<3,3>(0,0) = params.T_HP[i].block<3,3>(0,0) * R_fix_HP;
     }
 
     try {
@@ -129,6 +132,21 @@ DroneParameters loadDroneParameters(const std::string& path) {
     try {
         params.integratorSettings.implicitFdEps =
             yaml.nodeAtPath("integrator_settings.implicit_fd_epsilon").asScalar();
+    } catch (const std::exception&) {}
+
+    try {
+        const auto pos = yaml.nodeAtPath("x0_pos").asSequence();
+        if (pos.size() == 3) {
+            params.x0_pos = Eigen::Vector3d(pos[0], pos[1], pos[2]);
+        }
+    } catch (const std::exception&) {}
+    try {
+        const auto quat = yaml.nodeAtPath("x0_rotation").asSequence();
+        if (quat.size() == 4) {
+            params.x0_rotation = Eigen::Vector4d(quat[0], quat[1], quat[2], quat[3]);
+            const double n = params.x0_rotation.norm();
+            if (n > 1e-9) params.x0_rotation /= n;
+        }
     } catch (const std::exception&) {}
 
     return params;

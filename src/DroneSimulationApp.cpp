@@ -9,6 +9,8 @@
 #include <sstream>
 
 #include <polyscope/view.h>
+#include <polyscope/point_cloud.h>
+#include "SceneUtils.h"
 
 namespace {
 const char* integratorLabel(IntegratorType type) {
@@ -25,7 +27,12 @@ const char* integratorLabel(IntegratorType type) {
 DroneSimulationApp::DroneSimulationApp()
     : dynamics_("model/drone_parameters.yaml"),
       state_(Eigen::VectorXd::Zero(DroneDynamics::kStateSize)) {
-    state_(3) = 1.0;
+    state_.segment<3>(0) = dynamics_.params().x0_pos;
+    state_.segment<4>(3) = dynamics_.params().x0_rotation;
+    if (state_.segment<4>(3).norm() < 1e-9) {
+        state_(3) = 1.0;
+        state_(4) = state_(5) = state_(6) = 0.0;
+    }
     for (int i = 0; i < 4; ++i) {
         state_(13 + 4 * i) = 1.0;
     }
@@ -42,18 +49,58 @@ DroneSimulationApp::DroneSimulationApp()
     logIntegratorSettings();
     std::cout << "Hover thrust per rotor: " << hoverThrust() << " N" << std::endl;
     initRotorData();
+
+    planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});
+    contactParams_.contactStiffness = 20.0;
+    contactParams_.contactDamping = 0.5;
+    contactParams_.activationDistance = 0.0005;
+    if (const char* env = std::getenv("MORPHY_CONTACT_VIZ")) {
+        enableContactViz_ = (std::string(env) != "0");
+    }
+    if (const char* env = std::getenv("MORPHY_START_CLEARANCE")) {
+        try { startHeightClearance_ = std::stod(env); } catch (...) {}
+    }
+    if (const char* env = std::getenv("MORPHY_GROUND_Z")) {
+        try { groundHeight_ = std::stod(env); } catch (...) {}
+    }
+    if (const char* env = std::getenv("MORPHY_DISABLE_PID")) {
+        enableController_ = (std::string(env) == "0");
+    }
+    if (const char* env = std::getenv("MORPHY_FREE_FALL")) {
+        if (std::string(env) == "1") enableController_ = false;
+    }
+    planes_.clear();
+    planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -groundHeight_});
 }
 
 bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
     if (!rig_.initialize(urdfPath)) {
         return false;
     }
+    double hullScale = 0.001; // force millimeters -> meters
+    hulls_ = loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), hullScale);
+    // Ensure the drone is at least startHeightClearance_ above the ground
+    const double zmin = baseHullZMin();
+    state_(0) = 0.0;
+    state_(1) = 0.0;
+    if (std::isfinite(zmin)) {
+        double minZ = groundHeight_ - zmin + startHeightClearance_;
+        if (state_(2) < minZ) state_(2) = minZ;
+    } else {
+        if (state_(2) < groundHeight_ + startHeightClearance_) {
+            state_(2) = groundHeight_ + startHeightClearance_;
+        }
+    }
     rig_.update(baseTransform(), jointAngles());
     return true;
 }
 
 void DroneSimulationApp::step() {
-    updateController();
+    if (enableController_) {
+        updateController();
+    } else {
+        thrust_.setZero(); // free-fall mode
+    }
 
     auto dyn = [this](const Eigen::VectorXd& x) {
         return dynamics_.derivative(x, thrust_);
@@ -85,6 +132,8 @@ void DroneSimulationApp::step() {
         logState();
         nextLogTime_ += logInterval_;
     }
+
+    updateContactsVisualization();
 }
 
 void DroneSimulationApp::logIntegratorSettings() const {
@@ -193,6 +242,9 @@ void DroneSimulationApp::logState() const {
             << " | rel_w [rad/s]: " << wi.transpose() << "\n";
     }
     oss << "thrust [N]: " << thrust_.transpose() << "\n";
+    oss << "contacts: " << lastContactCount_
+        << " | |sumF|: " << lastContactForceSumNorm_
+        << " N | max|F|: " << lastContactForceMax_ << " N\n";
     std::cout << oss.str() << std::endl;
 }
 
@@ -234,4 +286,112 @@ std::unordered_map<std::string, double> DroneSimulationApp::jointAngles() const 
         joints["base_link_to_connecting_link_" + std::to_string(i) + "_x"] = eulers[i].z();
     }
     return joints;
+}
+
+void DroneSimulationApp::updateContactsVisualization() {
+    if (hulls_.baseHull_B.empty()) {
+        return;
+    }
+    const bool doDraw = enableContactViz_ && ((vizCounter_++ % vizSkip_) == 0);
+
+    auto normalizeQuat = [](Eigen::Quaterniond& q) {
+        if (q.norm() > 1e-9) q.normalize();
+    };
+
+    Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
+    normalizeQuat(q_base);
+    std::array<Eigen::Quaterniond,4> armQuat;
+    for (int i = 0; i < 4; ++i) {
+        armQuat[i] = Eigen::Quaterniond(state_(13 + 4 * i),
+                                        state_(14 + 4 * i),
+                                        state_(15 + 4 * i),
+                                        state_(16 + 4 * i));
+        normalizeQuat(armQuat[i]);
+    }
+
+    Eigen::Matrix<double,3,4> P_omega_rel;
+    for (int i = 0; i < 4; ++i) {
+        P_omega_rel.col(i) = state_.segment<3>(29 + 3 * i);
+    }
+
+    const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
+    const Eigen::Matrix3d R_WB = q_base.toRotationMatrix();
+    const Eigen::Matrix3d R_BW = R_WB.transpose();
+    const Eigen::Vector3d v_WB = state_.segment<3>(7);
+    const Eigen::Vector3d w_B = state_.segment<3>(10);
+    const Eigen::Vector3d W_omega_B = R_WB * w_B;
+
+    Eigen::Matrix<double,3,4> W_omega_P;
+    for (int i = 0; i < 4; ++i) {
+        const Eigen::Matrix3d R_WP = arms[i].R_WP;
+        const Eigen::Matrix3d R_PW = R_WP.transpose();
+        const Eigen::Matrix3d R_PB = R_PW * R_WB;
+        const Eigen::Vector3d P_omega_P_i = P_omega_rel.col(i) + R_PB * w_B;
+        W_omega_P.col(i) = R_WP * P_omega_P_i;
+    }
+
+    lastContacts_ = computeContacts(
+        arms.data(),
+        state_.segment<3>(0),
+        R_WB,
+        v_WB,
+        W_omega_B,
+        W_omega_P,
+        hulls_,
+        planes_,
+        contactParams_);
+
+    lastContactCount_ = lastContacts_.size();
+    Eigen::Vector3d sumF = Eigen::Vector3d::Zero();
+    lastContactForceMax_ = 0.0;
+    for (const auto& c : lastContacts_) {
+        sumF += c.force_W;
+        lastContactForceMax_ = std::max(lastContactForceMax_, c.force_W.norm());
+    }
+    lastContactForceSumNorm_ = sumF.norm();
+
+    // Decimate if too many contacts to avoid bogging down the UI
+    std::vector<ContactPoint> vizContacts;
+    vizContacts.reserve(std::min<std::size_t>(lastContacts_.size(), maxVizContacts_));
+    if (lastContacts_.size() > maxVizContacts_) {
+        std::size_t step = std::max<std::size_t>(1, lastContacts_.size() / maxVizContacts_);
+        for (std::size_t i = 0; i < lastContacts_.size(); i += step) {
+            vizContacts.push_back(lastContacts_[i]);
+        }
+    } else {
+        vizContacts = lastContacts_;
+    }
+
+    if (!doDraw) {
+        return;
+    }
+    std::vector<glm::vec3> pts;
+    std::vector<glm::vec3> vecs;
+    pts.reserve(vizContacts.size());
+    vecs.reserve(vizContacts.size());
+    for (const auto& c : vizContacts) {
+        pts.emplace_back(static_cast<float>(c.x_W.x()),
+                         static_cast<float>(c.x_W.y()),
+                         static_cast<float>(c.x_W.z()));
+        vecs.emplace_back(static_cast<float>(c.force_W.x()),
+                          static_cast<float>(c.force_W.y()),
+                          static_cast<float>(c.force_W.z()));
+    }
+
+    polyscope::PointCloud* pc = nullptr;
+    if (polyscope::hasPointCloud("contact_points")) {
+        polyscope::removePointCloud("contact_points");
+    }
+    pc = polyscope::registerPointCloud("contact_points", pts);
+    pc->setPointRadius(0.003, true);
+    pc->addVectorQuantity("contact_force", vecs, polyscope::VectorType::AMBIENT)
+        ->setVectorLengthScale(0.03);
+}
+
+double DroneSimulationApp::baseHullZMin() const {
+    double zmin = std::numeric_limits<double>::infinity();
+    for (const auto& v : hulls_.baseHull_B) {
+        zmin = std::min(zmin, v.z());
+    }
+    return zmin;
 }

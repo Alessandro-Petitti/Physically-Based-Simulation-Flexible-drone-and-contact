@@ -1,4 +1,6 @@
 #include "DroneDynamics.h"
+#include "ContactGeometry.h"
+#include "SceneUtils.h"
 
 #include <Eigen/Geometry>
 #include <Eigen/LU>
@@ -107,6 +109,12 @@ std::array<DroneDynamics::ArmKinematics, 4> DroneDynamics::computeArmFrames(
         arms[i] = arm;
     }
     return arms;
+}
+
+std::array<DroneDynamics::ArmKinematics,4> DroneDynamics::computeArmFramesFromState(
+    const Eigen::Quaterniond& q_base,
+    const std::array<Eigen::Quaterniond,4>& armQuat) const {
+    return computeArmFrames(q_base, armQuat);
 }
 
 void DroneDynamics::buildTranslationalBlock(
@@ -229,6 +237,7 @@ void DroneDynamics::buildArmBlock(
     const Eigen::Vector3d& P_tau_SD_i,
     const Eigen::Vector3d& P_tau_drag_i,
     const Eigen::Vector3d& P_tau_gyro_i,
+    const Eigen::Vector3d& P_tau_contact_i,
     Eigen::Matrix<double,3,18>& A,
     Eigen::Vector3d& b) const {
 
@@ -256,6 +265,7 @@ void DroneDynamics::buildArmBlock(
                 W_omega_P_i.cross(W_omega_P_i.cross(W_r_HP)) - gravity_));
     b += -(skew(P_r_PHi) * R_PW) * WF_thrust[armIndex];
     b += P_tau_SD_i + P_tau_drag_i + P_tau_gyro_i;
+    b += P_tau_contact_i;
 }
 
 Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
@@ -266,6 +276,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     assertFinite(state, "state vector");
     assertFinite(thrust, "thrust input");
 
+    const Eigen::Vector3d W_r_B = state.segment<3>(0);
     Eigen::Quaterniond q_base = makeQuaternion(state.segment<4>(3));
     Eigen::Vector3d v = state.segment<3>(7);
     Eigen::Vector3d w = state.segment<3>(10);
@@ -298,6 +309,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     Eigen::Matrix<double,3,4> P_tau_SD;
     Eigen::Matrix<double,3,4> P_tau_drag;
     Eigen::Matrix<double,3,4> P_tau_gyro;
+    Eigen::Matrix<double,3,4> W_omega_P_mat;
     std::array<Eigen::Vector3d,4> P_omega_P;
     std::array<Eigen::Vector3d,4> W_omega_P;
     std::array<Eigen::Matrix3d,4> R_PB_list;
@@ -335,7 +347,80 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
         Eigen::Vector3d P_omega_P_i = P_omega_rel.col(i) + R_PB * w;
         P_omega_P[i] = P_omega_P_i;
         W_omega_P[i] = R_WP * P_omega_P_i;
+        W_omega_P_mat.col(i) = W_omega_P[i];
         assertFinite(W_omega_P[i], "W_omega_P arm " + std::to_string(i));
+    }
+
+    // ----------------------
+    // Contact computation (penalty + damping)
+    // ----------------------
+    static const double kHullScale = 0.001; // OBJ in millimeters -> meters
+    static const double kGroundZ = []{
+        if (const char* env = std::getenv("MORPHY_GROUND_Z")) {
+            try { return std::stod(env); } catch (...) {}
+        }
+        return 0.0;
+    }();
+    static const ContactParams kContactParams = []{
+        ContactParams p;
+        p.contactStiffness = 20.0;
+        p.contactDamping = 0.5;
+        p.activationDistance = 0.0005;
+        if (const char* env = std::getenv("MORPHY_CONTACT_K")) {
+            try { p.contactStiffness = std::stod(env); } catch (...) {}
+        }
+        if (const char* env = std::getenv("MORPHY_CONTACT_D")) {
+            try { p.contactDamping = std::stod(env); } catch (...) {}
+        }
+        if (const char* env = std::getenv("MORPHY_CONTACT_D0")) {
+            try { p.activationDistance = std::stod(env); } catch (...) {}
+        }
+        return p;
+    }();
+    static const ConvexHullShapes kHulls =
+        loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), kHullScale);
+    static const std::vector<Plane> kPlanes = {
+        Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -kGroundZ} // floor at z = kGroundZ
+    };
+
+    const auto contacts = computeContacts(
+        arms.data(),
+        W_r_B,
+        R_WB,
+        v,
+        W_omega_B,
+        W_omega_P_mat,
+        kHulls,
+        kPlanes,
+        kContactParams);
+
+    Eigen::Vector3d contactForceSum = Eigen::Vector3d::Zero();
+    Eigen::Vector3d contactTorqueBase_W = Eigen::Vector3d::Zero();
+    std::array<Eigen::Vector3d,4> P_tau_contact;
+    for (auto& t : P_tau_contact) t.setZero();
+
+    auto clampVec = [](Eigen::Vector3d v, double maxNorm) {
+        double n = v.norm();
+        if (n > maxNorm && n > 1e-12) v *= (maxNorm / n);
+        return v;
+    };
+
+    for (const auto& cp : contacts) {
+        contactForceSum += cp.force_W;
+        if (cp.bodyId == 0) {
+            Eigen::Vector3d tau_W = (cp.x_W - W_r_B).cross(cp.force_W);
+            contactTorqueBase_W += tau_W;
+        } else if (cp.bodyId >= 1 && cp.bodyId <= 4) {
+            const int idx = cp.bodyId - 1;
+            Eigen::Vector3d tau_W = (cp.x_W - arms[idx].W_r_BP).cross(cp.force_W);
+            Eigen::Matrix3d R_PW = R_WP_list[idx].transpose();
+            P_tau_contact[idx] += R_PW * tau_W;
+        }
+    }
+    contactForceSum = clampVec(contactForceSum, 200.0); // safety clamp
+    contactTorqueBase_W = clampVec(contactTorqueBase_W, 50.0);
+    for (auto& tau : P_tau_contact) {
+        tau = clampVec(tau, 20.0);
     }
 
     Eigen::Matrix<double,18,18> A = Eigen::Matrix<double,18,18>::Zero();
@@ -346,6 +431,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     Eigen::Vector3d block_rhs;
 
     buildTranslationalBlock(arms, WF_thrust, W_omega_B, W_omega_P, block, block_rhs);
+    block_rhs += contactForceSum; // inject contact forces (world frame)
     A.block<3,18>(row,0) = block;
     rhs.segment<3>(row) = block_rhs;
     assertFinite(block_rhs, "translational RHS");
@@ -353,6 +439,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     row += 3;
 
     buildBodyRotationalBlock(arms, WF_thrust, R_WB, w, P_tau_SD, block, block_rhs);
+    block_rhs += R_BW * contactTorqueBase_W; // map world torque to body frame
     A.block<3,18>(row,0) = block;
     rhs.segment<3>(row) = block_rhs;
     assertFinite(block_rhs, "body rotational RHS");
@@ -361,7 +448,8 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
 
     for (int i = 0; i < 4; ++i) {
         buildArmBlock(i, arms, WF_thrust, R_WB, W_omega_B, W_omega_P[i], P_omega_P[i],
-                      P_tau_SD.col(i), P_tau_drag.col(i), P_tau_gyro.col(i), block, block_rhs);
+                      P_tau_SD.col(i), P_tau_drag.col(i), P_tau_gyro.col(i), P_tau_contact[i],
+                      block, block_rhs);
         A.block<3,18>(row,0) = block;
         rhs.segment<3>(row) = block_rhs;
         assertFinite(block_rhs, "arm block RHS (arm " + std::to_string(i) + ")");

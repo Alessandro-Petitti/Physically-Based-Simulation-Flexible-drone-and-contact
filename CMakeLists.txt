@@ -68,6 +68,8 @@ add_executable(morphy_viewer
     model/DroneDynamics.cpp
     model/DroneParameters.cpp
     model/SimpleYaml.cpp
+    model/ContactGeometry.cpp
+    model/HullLoader.cpp
 )
 
 target_include_directories(morphy_viewer PRIVATE
@@ -82,6 +84,118 @@ target_link_libraries(morphy_viewer PRIVATE
     assimp
     ${URDFDOM_MODEL_LIB}
     ${URDFDOM_WORLD_LIB}
+)
+
+# ============================================================
+# 🔹 Collision check (headless free-fall → ground contact)
+# ============================================================
+add_executable(collision_check
+    collision_check.cpp
+    src/SceneUtils.cpp
+    model/DroneDynamics.cpp
+    model/DroneParameters.cpp
+    model/SimpleYaml.cpp
+    model/ContactGeometry.cpp
+    model/HullLoader.cpp
+)
+target_include_directories(collision_check PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(collision_check PRIVATE
+    Eigen3::Eigen
+)
+
+# ============================================================
+# 🔹 Contact smoke test (headless; prints contact summary)
+# ============================================================
+add_executable(contact_smoketest
+    tools/contact_smoketest.cpp
+    src/SceneUtils.cpp
+    model/DroneDynamics.cpp
+    model/DroneParameters.cpp
+    model/SimpleYaml.cpp
+    model/ContactGeometry.cpp
+    model/HullLoader.cpp
+)
+target_include_directories(contact_smoketest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(contact_smoketest PRIVATE
+    Eigen3::Eigen
+)
+
+# ============================================================
+# 🔹 Contact drop test (free fall with contact forces)
+# ============================================================
+add_executable(contact_drop
+    tools/contact_drop.cpp
+    src/SceneUtils.cpp
+    model/DroneDynamics.cpp
+    model/DroneParameters.cpp
+    model/SimpleYaml.cpp
+    model/ContactGeometry.cpp
+    model/HullLoader.cpp
+)
+target_include_directories(contact_drop PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(contact_drop PRIVATE
+    Eigen3::Eigen
+)
+
+# ============================================================
+# 🔹 Debug hull (inspect hull point coordinates)
+# ============================================================
+add_executable(debug_hull
+    debug_hull.cpp
+    src/SceneUtils.cpp
+    model/HullLoader.cpp
+)
+target_include_directories(debug_hull PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(debug_hull PRIVATE
+    Eigen3::Eigen
+)
+
+# ============================================================
+# 🔹 Debug contacts (analyze contact point positions)
+# ============================================================
+add_executable(debug_contacts
+    debug_contacts.cpp
+    src/SceneUtils.cpp
+    model/HullLoader.cpp
+    model/ContactGeometry.cpp
+    model/DroneDynamics.cpp
+    model/DroneParameters.cpp
+    model/SimpleYaml.cpp
+)
+target_include_directories(debug_contacts PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(debug_contacts PRIVATE
+    Eigen3::Eigen
+)
+
+# ============================================================
+# 🔹 Debug rotation (test arm hull rotations)
+# ============================================================
+add_executable(debug_rotation
+    debug_rotation.cpp
+    src/SceneUtils.cpp
+    model/HullLoader.cpp
+)
+target_include_directories(debug_rotation PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/model
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+target_link_libraries(debug_rotation PRIVATE
+    Eigen3::Eigen
 )
 
 # ============================================================

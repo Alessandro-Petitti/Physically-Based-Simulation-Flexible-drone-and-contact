@@ -6,6 +6,8 @@
 #include "ImplicitMidpointIRK.h"
 #include "RungeKutta4.h"
 #include "UrdfRig.h"
+#include "ContactGeometry.h"
+#include "HullLoader.h"
 
 #include <Eigen/Dense>
 #include <array>
@@ -40,6 +42,8 @@ private:
     void normalizeQuaternions();
     Eigen::Isometry3d baseTransform() const;
     std::unordered_map<std::string, double> jointAngles() const;
+    void updateContactsVisualization();
+    double baseHullZMin() const;
 
     DroneDynamics dynamics_;
     ExplicitEuler explicitEuler_;
@@ -63,4 +67,18 @@ private:
     std::array<Eigen::Vector3d, 4> rotorDirsB_{};
     Eigen::Vector3d gravity_{0.0, 0.0, -9.8066};
     double yawRef_{0.0};
+    ConvexHullShapes hulls_;
+    std::vector<Plane> planes_;
+    ContactParams contactParams_;
+    std::vector<ContactPoint> lastContacts_;
+    bool enableContactViz_{true};
+    bool enableController_{true};
+    int vizSkip_{2}; // update every N frames
+    int vizCounter_{0};
+    std::size_t maxVizContacts_{2000};
+    double lastContactForceSumNorm_{0.0};
+    double lastContactForceMax_{0.0};
+    std::size_t lastContactCount_{0};
+    double startHeightClearance_{0.05}; // extra clearance above the hull's lowest point
+    double groundHeight_{0.0};
 };

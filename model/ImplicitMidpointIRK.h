@@ -29,8 +29,7 @@ Eigen::MatrixXd numericalJacobian(const Eigen::VectorXd& x,
     }
     auto t1 = clock::now();
     double jac_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    std::cout << "[TIMER] numericalJacobian took "
-              << jac_ms << " ms\n";
+    //std::cout << "[TIMER] numericalJacobian took "<< jac_ms << " ms\n";
     return J;
 }
 } // namespace implicit_midpoint_detail

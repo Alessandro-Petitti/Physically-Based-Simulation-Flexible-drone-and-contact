@@ -13,13 +13,6 @@ public:
     static constexpr int kStateSize = 41;
     static constexpr int kInputSize = 4;
 
-    Eigen::VectorXd derivative(const Eigen::VectorXd& state,
-                               const Eigen::Vector4d& thrust) const;
-
-    const DroneParameters& params() const { return params_; }
-    std::array<Eigen::Vector3d, 4> armEulerZYX(const Eigen::VectorXd& state) const;
-
-private:
     struct ArmKinematics {
         Eigen::Matrix3d R_BH0;
         Eigen::Matrix3d R_H0H;
@@ -32,6 +25,16 @@ private:
         Eigen::Vector3d W_r_BP;
     };
 
+    Eigen::VectorXd derivative(const Eigen::VectorXd& state,
+                               const Eigen::Vector4d& thrust) const;
+
+    const DroneParameters& params() const { return params_; }
+    std::array<Eigen::Vector3d, 4> armEulerZYX(const Eigen::VectorXd& state) const;
+    std::array<ArmKinematics,4> computeArmFramesFromState(
+        const Eigen::Quaterniond& q_base,
+        const std::array<Eigen::Quaterniond,4>& armQuat) const;
+
+private:
     DroneParameters params_;
     Eigen::Matrix3d jointDamping_;
     Eigen::Matrix3d jointStiffness_;
@@ -74,6 +77,7 @@ private:
         const Eigen::Vector3d& P_tau_SD_i,
         const Eigen::Vector3d& P_tau_drag_i,
         const Eigen::Vector3d& P_tau_gyro_i,
+        const Eigen::Vector3d& P_tau_contact_i,
         Eigen::Matrix<double,3,18>& A,
         Eigen::Vector3d& b) const;
 };
