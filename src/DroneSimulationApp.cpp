@@ -10,6 +10,7 @@
 
 #include <polyscope/view.h>
 #include <polyscope/point_cloud.h>
+#include <polyscope/surface_mesh.h>
 #include "SceneUtils.h"
 
 namespace {
@@ -79,6 +80,7 @@ bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
     }
     double hullScale = 0.001; // force millimeters -> meters
     hulls_ = loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), hullScale);
+    hullMeshes_ = loadConvexHullMeshes(scene::resolveResource("graphics/hulls").string(), hullScale);
     // Ensure the drone is at least startHeightClearance_ above the ground
     const double zmin = baseHullZMin();
     state_(0) = 0.0;
@@ -92,6 +94,7 @@ bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
         }
     }
     rig_.update(baseTransform(), jointAngles());
+    initializeHullVisualization();
     return true;
 }
 
@@ -134,6 +137,7 @@ void DroneSimulationApp::step() {
     }
 
     updateContactsVisualization();
+    updateHullVisualization();
 }
 
 void DroneSimulationApp::logIntegratorSettings() const {
@@ -394,4 +398,92 @@ double DroneSimulationApp::baseHullZMin() const {
         zmin = std::min(zmin, v.z());
     }
     return zmin;
+}
+
+void DroneSimulationApp::initializeHullVisualization() {
+    if (!enableHullViz_) return;
+
+    // Helper to convert vertices to glm::vec3
+    auto toGlm = [](const std::vector<Eigen::Vector3d>& verts) {
+        std::vector<glm::vec3> result;
+        result.reserve(verts.size());
+        for (const auto& v : verts) {
+            result.emplace_back(static_cast<float>(v.x()),
+                                static_cast<float>(v.y()),
+                                static_cast<float>(v.z()));
+        }
+        return result;
+    };
+
+    // Register base hull as surface mesh
+    auto baseVerts = toGlm(hullMeshes_.baseHull_B.vertices);
+    auto* baseMesh = polyscope::registerSurfaceMesh("hull_base", baseVerts, hullMeshes_.baseHull_B.faces);
+    baseMesh->setSurfaceColor({0.2f, 0.8f, 0.2f});
+    baseMesh->setTransparency(0.5f);
+
+    // Register arm hulls as surface meshes
+    for (int i = 0; i < 4; ++i) {
+        auto armVerts = toGlm(hullMeshes_.armHull_P[i].vertices);
+        std::string name = "hull_arm_" + std::to_string(i);
+        auto* armMesh = polyscope::registerSurfaceMesh(name, armVerts, hullMeshes_.armHull_P[i].faces);
+        armMesh->setSurfaceColor({0.8f, 0.4f, 0.1f});
+        armMesh->setTransparency(0.5f);
+    }
+}
+
+void DroneSimulationApp::updateHullVisualization() {
+    if (!enableHullViz_) return;
+
+    // Get current state
+    const Eigen::Vector3d W_r_B = state_.segment<3>(0);
+    const Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
+    const Eigen::Matrix3d R_WB = q_base.toRotationMatrix();
+
+    // Alignment matrices (same as in ContactGeometry.cpp)
+    // Base: URDF applies rpy="0 0 1.57079" (+π/2 around Z) to core_battery_transformed.stl
+    static const Eigen::Matrix3d kBaseAlign = 
+        Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+    // Arms: arm_transformed_hull.obj matches arm_transformed.stl, R_WP already includes joint rotation
+    static const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
+
+    // Get arm kinematics
+    std::array<Eigen::Quaterniond, 4> armQuat;
+    for (int i = 0; i < 4; ++i) {
+        const int offset = 13 + 4 * i;
+        armQuat[i] = Eigen::Quaterniond(state_(offset), state_(offset + 1),
+                                        state_(offset + 2), state_(offset + 3));
+    }
+    const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
+
+    // Update base hull vertices
+    std::vector<glm::vec3> baseVerts;
+    baseVerts.reserve(hullMeshes_.baseHull_B.vertices.size());
+    for (const auto& p_B : hullMeshes_.baseHull_B.vertices) {
+        Eigen::Vector3d x_W = W_r_B + R_WB * (kBaseAlign * p_B);
+        baseVerts.emplace_back(static_cast<float>(x_W.x()),
+                               static_cast<float>(x_W.y()),
+                               static_cast<float>(x_W.z()));
+    }
+    if (polyscope::hasSurfaceMesh("hull_base")) {
+        polyscope::getSurfaceMesh("hull_base")->updateVertexPositions(baseVerts);
+    }
+
+    // Update arm hull vertices
+    for (int i = 0; i < 4; ++i) {
+        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BP;
+        const Eigen::Matrix3d& R_WP = arms[i].R_WP;
+
+        std::vector<glm::vec3> armVerts;
+        armVerts.reserve(hullMeshes_.armHull_P[i].vertices.size());
+        for (const auto& p_P : hullMeshes_.armHull_P[i].vertices) {
+            Eigen::Vector3d x_W = armOrigin_W + R_WP * (kArmAlign * p_P);
+            armVerts.emplace_back(static_cast<float>(x_W.x()),
+                                  static_cast<float>(x_W.y()),
+                                  static_cast<float>(x_W.z()));
+        }
+        std::string name = "hull_arm_" + std::to_string(i);
+        if (polyscope::hasSurfaceMesh(name)) {
+            polyscope::getSurfaceMesh(name)->updateVertexPositions(armVerts);
+        }
+    }
 }

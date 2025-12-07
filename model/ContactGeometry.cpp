@@ -5,11 +5,15 @@
 
 namespace {
 constexpr double kForceEps = 1e-12;
-const Eigen::Matrix3d kBaseAlign = Eigen::Matrix3d::Identity();
 
-// ARM HULL FRAME: points from arm_hull.obj are in the link frame where arm extends along +Z.
-// Must rotate +90° around Y to align with propeller frame (frame P).
-const Eigen::Matrix3d kArmAlign = Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d::UnitY()).toRotationMatrix();
+// BASE HULL FRAME: The URDF applies rpy="0 0 1.57079" (+π/2 around Z) to core_battery_transformed.stl
+// The hull file core_battery_transformed_hull.obj is in the same frame, so we need the same rotation.
+const Eigen::Matrix3d kBaseAlign = Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+// ARM HULL FRAME: We now use arm_transformed_hull.obj which matches arm_transformed.stl.
+// The R_WP from computeArmFrames already includes the joint rotation (π/2 around Y via T_HP).
+// No additional alignment needed.
+const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
 
 inline Eigen::Vector3d contactForce(const Plane& plane,
                                     double penetration,

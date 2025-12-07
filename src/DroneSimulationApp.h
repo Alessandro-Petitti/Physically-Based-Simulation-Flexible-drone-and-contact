@@ -68,6 +68,7 @@ private:
     Eigen::Vector3d gravity_{0.0, 0.0, -9.8066};
     double yawRef_{0.0};
     ConvexHullShapes hulls_;
+    ConvexHullMeshes hullMeshes_;
     std::vector<Plane> planes_;
     ContactParams contactParams_;
     std::vector<ContactPoint> lastContacts_;
@@ -81,4 +82,8 @@ private:
     std::size_t lastContactCount_{0};
     double startHeightClearance_{0.05}; // extra clearance above the hull's lowest point
     double groundHeight_{0.0};
+    bool enableHullViz_{true};
+
+    void initializeHullVisualization();
+    void updateHullVisualization();
 };
