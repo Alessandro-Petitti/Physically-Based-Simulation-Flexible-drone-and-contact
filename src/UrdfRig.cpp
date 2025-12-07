@@ -197,6 +197,52 @@ Eigen::Matrix4f UrdfRig::getLinkTransform(const std::string& linkName) const {
     return viewAdjust_ * it->second.cast<float>();
 }
 
+Eigen::Matrix4f UrdfRig::getLinkTransformWorld(const std::string& linkName) const {
+    auto it = linkGlobalTransforms_.find(linkName);
+    if (it == linkGlobalTransforms_.end()) {
+        return Eigen::Matrix4f::Identity();
+    }
+    return it->second.cast<float>();
+}
+
+Eigen::Matrix4f UrdfRig::getLinkVisualTransformWorld(const std::string& linkName) const {
+    auto it = linkGlobalTransforms_.find(linkName);
+    if (it == linkGlobalTransforms_.end()) {
+        return Eigen::Matrix4f::Identity();
+    }
+    Eigen::Matrix4f T = it->second.cast<float>();
+    auto visIt = linkVisuals_.find(linkName);
+    if (visIt != linkVisuals_.end()) {
+        T = T * visIt->second.visualOffset;
+    }
+    return T;
+}
+
+Eigen::Matrix4f UrdfRig::getLinkTransformRelativeToBase(const std::string& linkName) const {
+    auto itBase = linkGlobalTransforms_.find("base_link");
+    auto it = linkGlobalTransforms_.find(linkName);
+    if (itBase == linkGlobalTransforms_.end() || it == linkGlobalTransforms_.end()) {
+        return Eigen::Matrix4f::Identity();
+    }
+    Eigen::Matrix4f T_base_inv = itBase->second.inverse().cast<float>();
+    return T_base_inv * it->second.cast<float>();
+}
+
+Eigen::Matrix4f UrdfRig::getLinkTransformInParentFrame(const std::string& linkName) const {
+    auto child = model_ ? model_->getLink(linkName) : nullptr;
+    if (!child || !child->parent_joint) {
+        return Eigen::Matrix4f::Identity();
+    }
+    std::string parentName = child->parent_joint->parent_link_name;
+    auto itParent = linkGlobalTransforms_.find(parentName);
+    auto itChild = linkGlobalTransforms_.find(linkName);
+    if (itParent == linkGlobalTransforms_.end() || itChild == linkGlobalTransforms_.end()) {
+        return Eigen::Matrix4f::Identity();
+    }
+    Eigen::Matrix4f T_parent_inv = itParent->second.inverse().cast<float>();
+    return T_parent_inv * itChild->second.cast<float>();
+}
+
 void UrdfRig::propagate(urdf::LinkConstSharedPtr link,
                         const Eigen::Matrix4d& parent,
                         const std::unordered_map<std::string, double>& jointPositions,

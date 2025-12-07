@@ -35,10 +35,10 @@ inertia:
 
 morphing_joint:
   b_joint: 0.1
-  k_joint: 0.01
+  k_joint: 0.1
 
 contact:
-  stiffness: 150.0        # k - rigidezza molla (N/m)
+  stiffnes.s: 1500        # k - rigidezza molla (N/m)
   damping: 0.1           # b - smorzamento (Ns/m)
   activation_distance: 0.0005  # distanza di attivazione contatto (m)
 

@@ -26,9 +26,21 @@ public:
     void update(const Eigen::Isometry3d& baseTransform,
                 const std::unordered_map<std::string, double>& jointPositions);
 
-    // Get the global transform (with viewAdjust applied) for a named link
+    // Get the global transform (with viewAdjust applied) for a named link (viewer frame)
     // Returns identity if not found
     Eigen::Matrix4f getLinkTransform(const std::string& linkName) const;
+
+    // Get the global transform in world frame (no viewAdjust applied)
+    Eigen::Matrix4f getLinkTransformWorld(const std::string& linkName) const;
+
+    // Get the global transform of the link's visual in world frame (no viewAdjust)
+    Eigen::Matrix4f getLinkVisualTransformWorld(const std::string& linkName) const;
+
+    // Get transform of a link expressed in base_link frame (no viewAdjust)
+    Eigen::Matrix4f getLinkTransformRelativeToBase(const std::string& linkName) const;
+
+    // Get transform of a link expressed in its parent link frame (no viewAdjust)
+    Eigen::Matrix4f getLinkTransformInParentFrame(const std::string& linkName) const;
 
     // Get viewAdjust matrix
     const Eigen::Matrix4f& getViewAdjust() const { return viewAdjust_; }

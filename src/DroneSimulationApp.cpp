@@ -143,6 +143,22 @@ void DroneSimulationApp::step() {
     // Export transforms for the base and arms
     static int frameIndex = 0;
     namespace fs = std::filesystem;
+    static bool exportInitialized = false;
+
+    if (!exportInitialized) {
+        const fs::path exportDir("export");
+        std::error_code ec;
+        fs::remove_all(exportDir, ec);
+        if (ec) {
+            std::cerr << "Warning: failed to clear export dir: " << ec.message() << '\n';
+        }
+        fs::create_directories(exportDir, ec);
+        if (ec) {
+            std::cerr << "Warning: failed to create export dir: " << ec.message() << '\n';
+        }
+        exportInitialized = true;
+    }
+
     auto matrixToJson = [](const Eigen::Matrix4f& m) {
         nlohmann::json arr = nlohmann::json::array();
         for (int r = 0; r < 4; ++r) {
@@ -155,17 +171,39 @@ void DroneSimulationApp::step() {
         return arr;
     };
 
-    fs::create_directories("export");
+    static const std::array<std::string, 4> armLinkNames = {
+        "arm_motor_0", "arm_motor_1", "arm_motor_2", "arm_motor_3"
+    };
 
-    nlohmann::json arms = nlohmann::json::object();
+    nlohmann::json armsLinkWorld = nlohmann::json::object();
+    nlohmann::json armsVisualWorld = nlohmann::json::object();
+    nlohmann::json armsViewFrame = nlohmann::json::object();
+    nlohmann::json armsRelBase = nlohmann::json::object();
+    nlohmann::json armsRelParent = nlohmann::json::object();
     for (int i = 0; i < 4; ++i) {
-        std::string linkName = "arm_motor_" + std::to_string(i);
-        arms[std::to_string(i)] = matrixToJson(rig_.getLinkTransform(linkName));
+        const std::string key = std::to_string(i);
+        const std::string& linkName = armLinkNames[i];
+        armsLinkWorld[key] = matrixToJson(rig_.getLinkTransformWorld(linkName));
+        armsVisualWorld[key] = matrixToJson(rig_.getLinkVisualTransformWorld(linkName));
+        armsViewFrame[key] = matrixToJson(rig_.getLinkTransform(linkName));
+        armsRelBase[key] = matrixToJson(rig_.getLinkTransformRelativeToBase(linkName));
+        armsRelParent[key] = matrixToJson(rig_.getLinkTransformInParentFrame(linkName));
     }
 
     nlohmann::json payload;
-    payload["base"] = matrixToJson(rig_.getLinkTransform("base_link"));
-    payload["arms"] = arms;
+    payload["view_adjust"] = matrixToJson(rig_.getViewAdjust());
+    payload["base_link_world"] = matrixToJson(rig_.getLinkTransformWorld("base_link"));
+    payload["base_visual_world"] = matrixToJson(rig_.getLinkVisualTransformWorld("base_link"));
+    payload["base_view_frame"] = matrixToJson(rig_.getLinkTransform("base_link"));
+    // Default keys for convenience/back-compat
+    payload["base"] = payload["base_link_world"];
+    payload["arms"] = armsLinkWorld;
+    // Explicit buckets
+    payload["arms_link_world"] = armsLinkWorld;
+    payload["arms_visual_world"] = armsVisualWorld;
+    payload["arms_view_frame"] = armsViewFrame;
+    payload["arms_relative_to_base"] = armsRelBase;
+    payload["arms_in_parent_frame"] = armsRelParent;
 
     std::ostringstream name;
     name << "export/frame_" << std::setfill('0') << std::setw(4) << frameIndex++ << ".json";
