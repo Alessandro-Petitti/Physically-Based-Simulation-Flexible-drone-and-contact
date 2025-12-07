@@ -81,6 +81,7 @@ target_link_libraries(morphy_viewer PRIVATE
     polyscope
     Eigen3::Eigen
     tinyobjloader
+    nlohmann_json::nlohmann_json
     assimp
     ${URDFDOM_MODEL_LIB}
     ${URDFDOM_WORLD_LIB}

@@ -4,6 +4,8 @@
 #include <Eigen/SVD>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -12,6 +14,7 @@
 #include <polyscope/point_cloud.h>
 #include <polyscope/surface_mesh.h>
 #include "SceneUtils.h"
+#include <nlohmann/json.hpp>
 
 namespace {
 const char* integratorLabel(IntegratorType type) {
@@ -136,6 +139,43 @@ void DroneSimulationApp::step() {
     }
 
     rig_.update(baseTransform(), jointAngles());
+
+    // Export transforms for the base and arms
+    static int frameIndex = 0;
+    namespace fs = std::filesystem;
+    auto matrixToJson = [](const Eigen::Matrix4f& m) {
+        nlohmann::json arr = nlohmann::json::array();
+        for (int r = 0; r < 4; ++r) {
+            nlohmann::json row = nlohmann::json::array();
+            for (int c = 0; c < 4; ++c) {
+                row.push_back(m(r, c));
+            }
+            arr.push_back(row);
+        }
+        return arr;
+    };
+
+    fs::create_directories("export");
+
+    nlohmann::json arms = nlohmann::json::object();
+    for (int i = 0; i < 4; ++i) {
+        std::string linkName = "arm_motor_" + std::to_string(i);
+        arms[std::to_string(i)] = matrixToJson(rig_.getLinkTransform(linkName));
+    }
+
+    nlohmann::json payload;
+    payload["base"] = matrixToJson(rig_.getLinkTransform("base_link"));
+    payload["arms"] = arms;
+
+    std::ostringstream name;
+    name << "export/frame_" << std::setfill('0') << std::setw(4) << frameIndex++ << ".json";
+
+    std::ofstream file(name.str());
+    if (file) {
+        file << payload.dump(2);
+    } else {
+        std::cerr << "Failed to write " << name.str() << '\n';
+    }
 
     if (simTime_ >= nextLogTime_) {
         logState();

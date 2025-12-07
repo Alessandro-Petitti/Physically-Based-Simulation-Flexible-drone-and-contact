@@ -12,7 +12,6 @@ _deps/
 
 # Binaries
 *.o
-*.obj
 *.exe
 *.out
 *.a

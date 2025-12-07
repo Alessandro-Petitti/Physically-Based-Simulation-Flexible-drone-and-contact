@@ -35,7 +35,7 @@ inertia:
 
 morphing_joint:
   b_joint: 0.1
-  k_joint: 0.1
+  k_joint: 0.01
 
 contact:
   stiffness: 150.0        # k - rigidezza molla (N/m)
