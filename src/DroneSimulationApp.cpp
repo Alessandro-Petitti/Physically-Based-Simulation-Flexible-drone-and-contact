@@ -52,9 +52,14 @@ DroneSimulationApp::DroneSimulationApp()
     initRotorData();
 
     planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});
-    contactParams_.contactStiffness = 20.0;
-    contactParams_.contactDamping = 0.5;
-    contactParams_.activationDistance = 0.0005;
+    // Load contact parameters from YAML
+    const auto& params = dynamics_.params();
+    contactParams_.contactStiffness = params.contactStiffness;
+    contactParams_.contactDamping = params.contactDamping;
+    contactParams_.activationDistance = params.contactActivationDistance;
+    std::cout << "Contact params: k=" << contactParams_.contactStiffness 
+              << " b=" << contactParams_.contactDamping 
+              << " d=" << contactParams_.activationDistance << std::endl;
     if (const char* env = std::getenv("MORPHY_CONTACT_VIZ")) {
         enableContactViz_ = (std::string(env) != "0");
     }
@@ -395,7 +400,7 @@ void DroneSimulationApp::updateContactsVisualization() {
         polyscope::removePointCloud("contact_points");
     }
     pc = polyscope::registerPointCloud("contact_points", pts);
-    pc->setPointRadius(0.003, true);
+    pc->setPointRadius(0.001, true);
     pc->addVectorQuantity("contact_force", vecs, polyscope::VectorType::AMBIENT)
         ->setVectorLengthScale(0.03);
 }
@@ -442,61 +447,49 @@ void DroneSimulationApp::initializeHullVisualization() {
 void DroneSimulationApp::updateHullVisualization() {
     if (!enableHullViz_) return;
 
-    // Get current state
-    const Eigen::Vector3d W_r_B = state_.segment<3>(0);
-    const Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
-    const Eigen::Matrix3d R_WB = q_base.toRotationMatrix();
+    // Use the transforms from UrdfRig (which handles the URDF joint chain correctly)
+    // This ensures hull visualization is perfectly aligned with URDF mesh visualization.
 
-    // viewAdjust: UrdfRig applies -π/2 around X to all URDF meshes for visualization
-    // We must apply the same transform to the hull visualization
-    static const Eigen::Matrix3d viewAdjust = 
-        Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
-
-    // Alignment matrices (same as in ContactGeometry.cpp)
+    // Alignment matrices for hull .obj files relative to URDF .stl files
     // Base: URDF applies rpy="0 0 1.57079" (+π/2 around Z) to core_battery_transformed.stl
-    static const Eigen::Matrix3d kBaseAlign = 
-        Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
-    // Arms: arm_transformed_hull.obj matches arm_transformed.stl, R_WP already includes joint rotation
-    static const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
+    static const Eigen::Matrix3f kBaseAlign = 
+        Eigen::AngleAxisf(static_cast<float>(M_PI / 2.0), Eigen::Vector3f::UnitZ()).toRotationMatrix();
+    // Arms: arm_transformed_hull.obj matches arm_transformed.stl
+    static const Eigen::Matrix3f kArmAlign = Eigen::Matrix3f::Identity();
 
-    // Get arm kinematics
-    std::array<Eigen::Quaterniond, 4> armQuat;
-    for (int i = 0; i < 4; ++i) {
-        const int offset = 13 + 4 * i;
-        armQuat[i] = Eigen::Quaterniond(state_(offset), state_(offset + 1),
-                                        state_(offset + 2), state_(offset + 3));
-    }
-    const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
+    // Get base transform from UrdfRig
+    Eigen::Matrix4f T_base = rig_.getLinkTransform("base_link");
+    Eigen::Matrix3f R_base = T_base.block<3,3>(0,0);
+    Eigen::Vector3f t_base = T_base.block<3,1>(0,3);
 
-    // Update base hull vertices (apply viewAdjust for visualization)
+    // Update base hull vertices
     std::vector<glm::vec3> baseVerts;
     baseVerts.reserve(hullMeshes_.baseHull_B.vertices.size());
     for (const auto& p_B : hullMeshes_.baseHull_B.vertices) {
-        Eigen::Vector3d x_W = W_r_B + R_WB * (kBaseAlign * p_B);
-        Eigen::Vector3d x_view = viewAdjust * x_W;
-        baseVerts.emplace_back(static_cast<float>(x_view.x()),
-                               static_cast<float>(x_view.y()),
-                               static_cast<float>(x_view.z()));
+        Eigen::Vector3f p_Bf = p_B.cast<float>();
+        Eigen::Vector3f x_view = t_base + R_base * (kBaseAlign * p_Bf);
+        baseVerts.emplace_back(x_view.x(), x_view.y(), x_view.z());
     }
     if (polyscope::hasSurfaceMesh("hull_base")) {
         polyscope::getSurfaceMesh("hull_base")->updateVertexPositions(baseVerts);
     }
 
-    // Update arm hull vertices
-    // Position: at hinge (H) since URDF joint has xyz="0 0 0"
-    // Rotation: use R_WP because arm mesh is in frame P (after joint rotation rpy="0 π/2 0")
+    // Update arm hull vertices using the exact same transforms as URDF visualization
+    static const std::array<std::string, 4> armLinkNames = {
+        "arm_motor_0", "arm_motor_1", "arm_motor_2", "arm_motor_3"
+    };
+
     for (int i = 0; i < 4; ++i) {
-        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BH;
-        const Eigen::Matrix3d& R_WP = arms[i].R_WP;
+        Eigen::Matrix4f T_arm = rig_.getLinkTransform(armLinkNames[i]);
+        Eigen::Matrix3f R_arm = T_arm.block<3,3>(0,0);
+        Eigen::Vector3f t_arm = T_arm.block<3,1>(0,3);
 
         std::vector<glm::vec3> armVerts;
         armVerts.reserve(hullMeshes_.armHull_P[i].vertices.size());
         for (const auto& p_P : hullMeshes_.armHull_P[i].vertices) {
-            Eigen::Vector3d x_W = armOrigin_W + R_WP * (kArmAlign * p_P);
-            Eigen::Vector3d x_view = viewAdjust * x_W;
-            armVerts.emplace_back(static_cast<float>(x_view.x()),
-                                  static_cast<float>(x_view.y()),
-                                  static_cast<float>(x_view.z()));
+            Eigen::Vector3f p_Pf = p_P.cast<float>();
+            Eigen::Vector3f x_view = t_arm + R_arm * (kArmAlign * p_Pf);
+            armVerts.emplace_back(x_view.x(), x_view.y(), x_view.z());
         }
         std::string name = "hull_arm_" + std::to_string(i);
         if (polyscope::hasSurfaceMesh(name)) {

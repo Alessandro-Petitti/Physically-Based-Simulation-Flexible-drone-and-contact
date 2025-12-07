@@ -172,6 +172,9 @@ void UrdfRig::update(const Eigen::Isometry3d& baseTransform,
     std::map<std::string, Eigen::Matrix4d> global;
     propagate(root, base, jointPositions, global);
 
+    // Store the global transforms for getLinkTransform()
+    linkGlobalTransforms_ = global;
+
     for (const auto& [name, vis] : linkVisuals_) {
         auto it = global.find(name);
         if (it == global.end()) continue;
@@ -183,6 +186,15 @@ void UrdfRig::update(const Eigen::Isometry3d& baseTransform,
                 transform[i][j] = T(j, i);
         vis.mesh->setTransform(transform);
     }
+}
+
+Eigen::Matrix4f UrdfRig::getLinkTransform(const std::string& linkName) const {
+    auto it = linkGlobalTransforms_.find(linkName);
+    if (it == linkGlobalTransforms_.end()) {
+        return Eigen::Matrix4f::Identity();
+    }
+    // Apply viewAdjust (same as visual rendering uses)
+    return viewAdjust_ * it->second.cast<float>();
 }
 
 void UrdfRig::propagate(urdf::LinkConstSharedPtr link,

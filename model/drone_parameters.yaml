@@ -1,9 +1,9 @@
 base_frame: base_link
 integrator: explicit_euler # options: explicit_euler, implicit_euler, rk4, irk
 integrator_settings:
-  dt: 0.002
+  dt: 0.001
   substeps: 5
-  implicit_max_iterations: 8
+  implicit_max_iterations: 6
   implicit_tolerance: 1.0e-6
   implicit_fd_epsilon: 1.0e-6
 
@@ -35,7 +35,12 @@ inertia:
 
 morphing_joint:
   b_joint: 0.1
-  k_joint: 1.5
+  k_joint: 0.1
+
+contact:
+  stiffness: 150.0        # k - rigidezza molla (N/m)
+  damping: 0.1           # b - smorzamento (Ns/m)
+  activation_distance: 0.0005  # distanza di attivazione contatto (m)
 
 transforms:
   T_BH:

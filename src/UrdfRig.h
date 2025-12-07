@@ -26,6 +26,13 @@ public:
     void update(const Eigen::Isometry3d& baseTransform,
                 const std::unordered_map<std::string, double>& jointPositions);
 
+    // Get the global transform (with viewAdjust applied) for a named link
+    // Returns identity if not found
+    Eigen::Matrix4f getLinkTransform(const std::string& linkName) const;
+
+    // Get viewAdjust matrix
+    const Eigen::Matrix4f& getViewAdjust() const { return viewAdjust_; }
+
 private:
     struct LinkVisual {
         polyscope::SurfaceMesh* mesh{nullptr};
@@ -34,6 +41,7 @@ private:
 
     urdf::ModelInterfaceSharedPtr model_;
     std::map<std::string, LinkVisual> linkVisuals_;
+    std::map<std::string, Eigen::Matrix4d> linkGlobalTransforms_;  // Global transforms per link
     Eigen::Matrix4f viewAdjust_{Eigen::Matrix4f::Identity()};
     std::filesystem::path projectRoot_;
     std::filesystem::path assetRoot_;

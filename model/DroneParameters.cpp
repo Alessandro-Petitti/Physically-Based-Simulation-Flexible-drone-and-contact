@@ -85,6 +85,11 @@ DroneParameters loadDroneParameters(const std::string& path) {
     params.jointDamping = yaml.nodeAtPath("morphing_joint.b_joint").asScalar();
     params.jointStiffness = yaml.nodeAtPath("morphing_joint.k_joint").asScalar();
 
+    // Contact parameters (with defaults if not specified)
+    try { params.contactStiffness = yaml.nodeAtPath("contact.stiffness").asScalar(); } catch (...) {}
+    try { params.contactDamping = yaml.nodeAtPath("contact.damping").asScalar(); } catch (...) {}
+    try { params.contactActivationDistance = yaml.nodeAtPath("contact.activation_distance").asScalar(); } catch (...) {}
+
     const std::array<std::string, 4> motorKeys{"motor_0", "motor_1", "motor_2", "motor_3"};
     for (size_t i = 0; i < 4; ++i) {
         params.T_BP[i] = pose7ToMatrix(yaml.nodeAtPath("transforms.T_BP." + motorKeys[i]).asSequence());

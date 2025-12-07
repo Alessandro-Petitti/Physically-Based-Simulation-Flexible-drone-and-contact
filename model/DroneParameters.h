@@ -35,6 +35,9 @@ struct DroneParameters {
     std::optional<double> propellerMaxThrust;
     double jointDamping{0.0};
     double jointStiffness{0.0};
+    double contactStiffness{20.0};
+    double contactDamping{0.5};
+    double contactActivationDistance{0.0005};
     std::array<Eigen::Matrix4d, 4> T_BH{};
     std::array<Eigen::Matrix4d, 4> T_HP{};
     std::array<Eigen::Matrix4d, 4> T_BP{};

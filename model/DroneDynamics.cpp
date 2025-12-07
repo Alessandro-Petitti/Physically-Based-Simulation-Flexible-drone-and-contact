@@ -361,22 +361,22 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
         }
         return 0.0;
     }();
-    static const ContactParams kContactParams = []{
-        ContactParams p;
-        p.contactStiffness = 20.0;
-        p.contactDamping = 0.5;
-        p.activationDistance = 0.0005;
-        if (const char* env = std::getenv("MORPHY_CONTACT_K")) {
-            try { p.contactStiffness = std::stod(env); } catch (...) {}
-        }
-        if (const char* env = std::getenv("MORPHY_CONTACT_D")) {
-            try { p.contactDamping = std::stod(env); } catch (...) {}
-        }
-        if (const char* env = std::getenv("MORPHY_CONTACT_D0")) {
-            try { p.activationDistance = std::stod(env); } catch (...) {}
-        }
-        return p;
-    }();
+    
+    // Use contact parameters from YAML (params_), with environment override
+    ContactParams contactParams;
+    contactParams.contactStiffness = params_.contactStiffness;
+    contactParams.contactDamping = params_.contactDamping;
+    contactParams.activationDistance = params_.contactActivationDistance;
+    if (const char* env = std::getenv("MORPHY_CONTACT_K")) {
+        try { contactParams.contactStiffness = std::stod(env); } catch (...) {}
+    }
+    if (const char* env = std::getenv("MORPHY_CONTACT_D")) {
+        try { contactParams.contactDamping = std::stod(env); } catch (...) {}
+    }
+    if (const char* env = std::getenv("MORPHY_CONTACT_D0")) {
+        try { contactParams.activationDistance = std::stod(env); } catch (...) {}
+    }
+    
     static const ConvexHullShapes kHulls =
         loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), kHullScale);
     static const std::vector<Plane> kPlanes = {
@@ -392,7 +392,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
         W_omega_P_mat,
         kHulls,
         kPlanes,
-        kContactParams);
+        contactParams);
 
     Eigen::Vector3d contactForceSum = Eigen::Vector3d::Zero();
     Eigen::Vector3d contactTorqueBase_W = Eigen::Vector3d::Zero();
