@@ -12,7 +12,7 @@ x0_pos: [0.0, 0.0, 0.5]
 
 # Rotazione iniziale: 90° attorno all'asse Y (pitch) - drone "di faccia"
 # Quaternione wxyz: [cos(45°), 0, sin(45°), 0] = [0.7071, 0, 0.7071, 0]
-x0_rotation: [1, 0.0, 0.0, 0.0]
+x0_rotation: [0.7071, 0, 0.7071, 0]
 
 mass:
   total: 0.260

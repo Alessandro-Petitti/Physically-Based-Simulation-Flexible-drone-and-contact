@@ -95,6 +95,7 @@ bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
     }
     rig_.update(baseTransform(), jointAngles());
     initializeHullVisualization();
+    initializeGroundPlaneVisualization();
     return true;
 }
 
@@ -369,17 +370,24 @@ void DroneSimulationApp::updateContactsVisualization() {
     if (!doDraw) {
         return;
     }
+
+    // viewAdjust: same as UrdfRig uses for URDF meshes visualization
+    static const Eigen::Matrix3d viewAdjust = 
+        Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
+
     std::vector<glm::vec3> pts;
     std::vector<glm::vec3> vecs;
     pts.reserve(vizContacts.size());
     vecs.reserve(vizContacts.size());
     for (const auto& c : vizContacts) {
-        pts.emplace_back(static_cast<float>(c.x_W.x()),
-                         static_cast<float>(c.x_W.y()),
-                         static_cast<float>(c.x_W.z()));
-        vecs.emplace_back(static_cast<float>(c.force_W.x()),
-                          static_cast<float>(c.force_W.y()),
-                          static_cast<float>(c.force_W.z()));
+        Eigen::Vector3d x_view = viewAdjust * c.x_W;
+        Eigen::Vector3d f_view = viewAdjust * c.force_W;
+        pts.emplace_back(static_cast<float>(x_view.x()),
+                         static_cast<float>(x_view.y()),
+                         static_cast<float>(x_view.z()));
+        vecs.emplace_back(static_cast<float>(f_view.x()),
+                          static_cast<float>(f_view.y()),
+                          static_cast<float>(f_view.z()));
     }
 
     polyscope::PointCloud* pc = nullptr;
@@ -439,6 +447,11 @@ void DroneSimulationApp::updateHullVisualization() {
     const Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
     const Eigen::Matrix3d R_WB = q_base.toRotationMatrix();
 
+    // viewAdjust: UrdfRig applies -π/2 around X to all URDF meshes for visualization
+    // We must apply the same transform to the hull visualization
+    static const Eigen::Matrix3d viewAdjust = 
+        Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
+
     // Alignment matrices (same as in ContactGeometry.cpp)
     // Base: URDF applies rpy="0 0 1.57079" (+π/2 around Z) to core_battery_transformed.stl
     static const Eigen::Matrix3d kBaseAlign = 
@@ -455,35 +468,70 @@ void DroneSimulationApp::updateHullVisualization() {
     }
     const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
 
-    // Update base hull vertices
+    // Update base hull vertices (apply viewAdjust for visualization)
     std::vector<glm::vec3> baseVerts;
     baseVerts.reserve(hullMeshes_.baseHull_B.vertices.size());
     for (const auto& p_B : hullMeshes_.baseHull_B.vertices) {
         Eigen::Vector3d x_W = W_r_B + R_WB * (kBaseAlign * p_B);
-        baseVerts.emplace_back(static_cast<float>(x_W.x()),
-                               static_cast<float>(x_W.y()),
-                               static_cast<float>(x_W.z()));
+        Eigen::Vector3d x_view = viewAdjust * x_W;
+        baseVerts.emplace_back(static_cast<float>(x_view.x()),
+                               static_cast<float>(x_view.y()),
+                               static_cast<float>(x_view.z()));
     }
     if (polyscope::hasSurfaceMesh("hull_base")) {
         polyscope::getSurfaceMesh("hull_base")->updateVertexPositions(baseVerts);
     }
 
     // Update arm hull vertices
+    // Position: at hinge (H) since URDF joint has xyz="0 0 0"
+    // Rotation: use R_WP because arm mesh is in frame P (after joint rotation rpy="0 π/2 0")
     for (int i = 0; i < 4; ++i) {
-        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BP;
+        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BH;
         const Eigen::Matrix3d& R_WP = arms[i].R_WP;
 
         std::vector<glm::vec3> armVerts;
         armVerts.reserve(hullMeshes_.armHull_P[i].vertices.size());
         for (const auto& p_P : hullMeshes_.armHull_P[i].vertices) {
             Eigen::Vector3d x_W = armOrigin_W + R_WP * (kArmAlign * p_P);
-            armVerts.emplace_back(static_cast<float>(x_W.x()),
-                                  static_cast<float>(x_W.y()),
-                                  static_cast<float>(x_W.z()));
+            Eigen::Vector3d x_view = viewAdjust * x_W;
+            armVerts.emplace_back(static_cast<float>(x_view.x()),
+                                  static_cast<float>(x_view.y()),
+                                  static_cast<float>(x_view.z()));
         }
         std::string name = "hull_arm_" + std::to_string(i);
         if (polyscope::hasSurfaceMesh(name)) {
             polyscope::getSurfaceMesh(name)->updateVertexPositions(armVerts);
         }
     }
+}
+
+void DroneSimulationApp::initializeGroundPlaneVisualization() {
+    // viewAdjust: same as UrdfRig uses for URDF meshes visualization
+    static const Eigen::Matrix3d viewAdjust = 
+        Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
+
+    // Create a large quad at z = groundHeight_
+    const double size = 2.0; // 2m x 2m plane
+    std::vector<Eigen::Vector3d> corners = {
+        {-size, -size, groundHeight_},
+        { size, -size, groundHeight_},
+        { size,  size, groundHeight_},
+        {-size,  size, groundHeight_}
+    };
+
+    // Apply viewAdjust to match URDF visualization
+    std::vector<glm::vec3> verts;
+    verts.reserve(4);
+    for (const auto& c : corners) {
+        Eigen::Vector3d v = viewAdjust * c;
+        verts.emplace_back(static_cast<float>(v.x()),
+                           static_cast<float>(v.y()),
+                           static_cast<float>(v.z()));
+    }
+
+    std::vector<std::vector<size_t>> faces = {{0, 1, 2, 3}};
+
+    auto* mesh = polyscope::registerSurfaceMesh("ground_plane", verts, faces);
+    mesh->setSurfaceColor({0.4f, 0.4f, 0.4f});
+    mesh->setTransparency(0.7f);
 }

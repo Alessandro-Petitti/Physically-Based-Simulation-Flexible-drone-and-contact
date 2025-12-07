@@ -44,6 +44,7 @@ private:
     std::unordered_map<std::string, double> jointAngles() const;
     void updateContactsVisualization();
     double baseHullZMin() const;
+    void initializeGroundPlaneVisualization();
 
     DroneDynamics dynamics_;
     ExplicitEuler explicitEuler_;

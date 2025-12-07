@@ -78,13 +78,14 @@ std::vector<ContactPoint> computeContacts(
     }
 
     // Arms hulls
+    // Position: at hinge (H) since URDF joint has xyz="0 0 0"
+    // Rotation: use R_WP because arm mesh is in frame P (after joint rotation rpy="0 π/2 0")
     for (int i = 0; i < 4; ++i) {
         const auto& armHull = hulls.armHull_P[i];
-        // W_r_BP is the propeller position RELATIVE to base, so add W_r_B for absolute position
-        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BP;
+        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BH;
         const Eigen::Matrix3d& R_WP = arms[i].R_WP;
 
-        Eigen::Vector3d v_bodyOrigin_W = v_WB + W_omega_B.cross(arms[i].W_r_BP);
+        Eigen::Vector3d v_bodyOrigin_W = v_WB + W_omega_B.cross(arms[i].W_r_BH);
         const Eigen::Vector3d omega_W = W_omega_P.col(i);
 
         for (const auto& p_P : armHull) {
