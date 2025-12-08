@@ -159,7 +159,7 @@ void DroneSimulationApp::step() {
         exportInitialized = true;
     }
 
-    auto matrixToJson = [](const Eigen::Matrix4f& m) {
+    auto matrixToJson = [](const Eigen::Matrix4d& m) {
         nlohmann::json arr = nlohmann::json::array();
         for (int r = 0; r < 4; ++r) {
             nlohmann::json row = nlohmann::json::array();
@@ -171,39 +171,40 @@ void DroneSimulationApp::step() {
         return arr;
     };
 
-    static const std::array<std::string, 4> armLinkNames = {
-        "arm_motor_0", "arm_motor_1", "arm_motor_2", "arm_motor_3"
-    };
-
-    nlohmann::json armsLinkWorld = nlohmann::json::object();
-    nlohmann::json armsVisualWorld = nlohmann::json::object();
-    nlohmann::json armsViewFrame = nlohmann::json::object();
-    nlohmann::json armsRelBase = nlohmann::json::object();
-    nlohmann::json armsRelParent = nlohmann::json::object();
+    Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
+    if (q_base.norm() > 1e-9) q_base.normalize();
+    std::array<Eigen::Quaterniond,4> armQuat;
     for (int i = 0; i < 4; ++i) {
-        const std::string key = std::to_string(i);
-        const std::string& linkName = armLinkNames[i];
-        armsLinkWorld[key] = matrixToJson(rig_.getLinkTransformWorld(linkName));
-        armsVisualWorld[key] = matrixToJson(rig_.getLinkVisualTransformWorld(linkName));
-        armsViewFrame[key] = matrixToJson(rig_.getLinkTransform(linkName));
-        armsRelBase[key] = matrixToJson(rig_.getLinkTransformRelativeToBase(linkName));
-        armsRelParent[key] = matrixToJson(rig_.getLinkTransformInParentFrame(linkName));
+        armQuat[i] = Eigen::Quaterniond(state_(13 + 4 * i),
+                                        state_(14 + 4 * i),
+                                        state_(15 + 4 * i),
+                                        state_(16 + 4 * i));
+        if (armQuat[i].norm() > 1e-9) armQuat[i].normalize();
+    }
+
+    const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
+
+    Eigen::Matrix4d T_WB = Eigen::Matrix4d::Identity();
+    T_WB.block<3,3>(0,0) = q_base.toRotationMatrix();
+    T_WB.block<3,1>(0,3) = state_.segment<3>(0);
+
+    nlohmann::json T_WH = nlohmann::json::object();
+    nlohmann::json T_WP = nlohmann::json::object();
+    for (int i = 0; i < 4; ++i) {
+        Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+        T.block<3,3>(0,0) = arms[i].R_WH;
+        T.block<3,1>(0,3) = arms[i].W_r_BH;
+        T_WH[std::to_string(i)] = matrixToJson(T);
+
+        T.block<3,3>(0,0) = arms[i].R_WP;
+        T.block<3,1>(0,3) = arms[i].W_r_BP;
+        T_WP[std::to_string(i)] = matrixToJson(T);
     }
 
     nlohmann::json payload;
-    payload["view_adjust"] = matrixToJson(rig_.getViewAdjust());
-    payload["base_link_world"] = matrixToJson(rig_.getLinkTransformWorld("base_link"));
-    payload["base_visual_world"] = matrixToJson(rig_.getLinkVisualTransformWorld("base_link"));
-    payload["base_view_frame"] = matrixToJson(rig_.getLinkTransform("base_link"));
-    // Default keys for convenience/back-compat
-    payload["base"] = payload["base_link_world"];
-    payload["arms"] = armsLinkWorld;
-    // Explicit buckets
-    payload["arms_link_world"] = armsLinkWorld;
-    payload["arms_visual_world"] = armsVisualWorld;
-    payload["arms_view_frame"] = armsViewFrame;
-    payload["arms_relative_to_base"] = armsRelBase;
-    payload["arms_in_parent_frame"] = armsRelParent;
+    payload["T_WB"] = matrixToJson(T_WB);
+    payload["T_WH"] = T_WH;
+    payload["T_WP"] = T_WP;
 
     std::ostringstream name;
     name << "export/frame_" << std::setfill('0') << std::setw(4) << frameIndex++ << ".json";
