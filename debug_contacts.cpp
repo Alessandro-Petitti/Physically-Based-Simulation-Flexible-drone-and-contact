@@ -56,7 +56,7 @@ int main() {
         std::cout << "Arm " << i << " origin (W_r_BP): " << arms[i].W_r_BP.transpose() << "\n";
     }
     
-    // Compute contacts
+    // Compute contacts (spring-damper model)
     auto contacts = computeContacts(arms, W_r_B, R_WB, v_WB, W_omega_B, W_omega_P, hulls, planes, params);
     
     std::cout << "\n=== CONTACT ANALYSIS ===\n";

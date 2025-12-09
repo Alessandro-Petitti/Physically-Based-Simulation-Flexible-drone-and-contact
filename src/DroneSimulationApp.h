@@ -59,7 +59,7 @@ private:
     double dt_{0.002};
     int substeps_{5};
     double nextLogTime_{0.0};
-    const double logInterval_{0.1};
+    const double logInterval_{0.01};
     Eigen::Vector3d positionRef_{Eigen::Vector3d(0.0, 0.0, 1.0)};
     Eigen::Vector3d integralError_{Eigen::Vector3d::Zero()};
     PIDGains gains_;

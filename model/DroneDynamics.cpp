@@ -412,7 +412,9 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
             contactTorqueBase_W += tau_W;
         } else if (cp.bodyId >= 1 && cp.bodyId <= 4) {
             const int idx = cp.bodyId - 1;
-            Eigen::Vector3d tau_W = (cp.x_W - arms[idx].W_r_BP).cross(cp.force_W);
+            // Torque around the hinge H (the rotation point of the arm)
+            const Eigen::Vector3d hinge_W = W_r_B + arms[idx].W_r_BH;
+            Eigen::Vector3d tau_W = (cp.x_W - hinge_W).cross(cp.force_W);
             Eigen::Matrix3d R_PW = R_WP_list[idx].transpose();
             P_tau_contact[idx] += R_PW * tau_W;
         }

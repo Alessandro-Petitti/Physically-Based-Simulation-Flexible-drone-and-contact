@@ -85,7 +85,7 @@ DroneParameters loadDroneParameters(const std::string& path) {
     params.jointDamping = yaml.nodeAtPath("morphing_joint.b_joint").asScalar();
     params.jointStiffness = yaml.nodeAtPath("morphing_joint.k_joint").asScalar();
 
-    // Contact parameters (with defaults if not specified)
+    // Contact parameters (spring-damper model)
     try { params.contactStiffness = yaml.nodeAtPath("contact.stiffness").asScalar(); } catch (...) {}
     try { params.contactDamping = yaml.nodeAtPath("contact.damping").asScalar(); } catch (...) {}
     try { params.contactActivationDistance = yaml.nodeAtPath("contact.activation_distance").asScalar(); } catch (...) {}

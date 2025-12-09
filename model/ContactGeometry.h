@@ -25,6 +25,13 @@ struct ContactParams {
     double activationDistance{0.0};
 };
 
+/**
+ * Compute contact forces using spring-damper model.
+ * 
+ * For each vertex of the convex hulls (base + 4 arms), checks if it's within
+ * the activation distance of any plane, and computes a penalty force:
+ *   F = k * penetration * n + b * v_approach * n
+ */
 std::vector<ContactPoint> computeContacts(
     const DroneDynamics::ArmKinematics arms[4],
     const Eigen::Vector3d& W_r_B,

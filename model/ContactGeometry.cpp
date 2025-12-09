@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace {
 constexpr double kForceEps = 1e-12;
@@ -15,12 +16,35 @@ const Eigen::Matrix3d kBaseAlign = Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d
 // No additional alignment needed.
 const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
 
+/**
+ * Compute contact force using spring-damper model.
+ * 
+ * Force model:
+ *   F = k * penetration * n + b * max(-v_n, 0) * n
+ * 
+ * where:
+ *   - penetration = max(d_activation - phi, 0) with phi = n·x + d (signed distance)
+ *   - v_n = velocity component along normal (positive = moving away from surface)
+ *   - The damping only acts when approaching the surface (v_n < 0)
+ *   - Force is always repulsive (pushes away from surface)
+ * 
+ * NOTE: For numerical stability, damping should satisfy: b << m / dt
+ * With dt=0.0002s and m=0.26kg, this means b << 1300 Ns/m
+ */
 inline Eigen::Vector3d contactForce(const Plane& plane,
                                     double penetration,
                                     double v_n,
                                     const ContactParams& params) {
+    // Spring force: always pushes away from surface
     const Eigen::Vector3d Fn = params.contactStiffness * penetration * plane.n;
-    const Eigen::Vector3d Fd = -params.contactDamping * v_n * plane.n;
+    
+    // Damping force: only when approaching surface (v_n < 0)
+    // When v_n < 0, we want a force in +n direction (opposing the motion)
+    // Fd = b * |v_n| * n = -b * v_n * n (since v_n < 0)
+    // But we only apply damping when approaching:
+    const double v_approach = std::max(-v_n, 0.0);  // positive when approaching
+    const Eigen::Vector3d Fd = params.contactDamping * v_approach * plane.n;
+    
     return Fn + Fd;
 }
 } // namespace

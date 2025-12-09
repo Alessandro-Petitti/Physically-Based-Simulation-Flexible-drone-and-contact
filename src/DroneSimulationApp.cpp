@@ -55,12 +55,12 @@ DroneSimulationApp::DroneSimulationApp()
     initRotorData();
 
     planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});
-    // Load contact parameters from YAML
+    // Load contact parameters from YAML (spring-damper model)
     const auto& params = dynamics_.params();
     contactParams_.contactStiffness = params.contactStiffness;
     contactParams_.contactDamping = params.contactDamping;
     contactParams_.activationDistance = params.contactActivationDistance;
-    std::cout << "Contact params: k=" << contactParams_.contactStiffness 
+    std::cout << "Contact params (spring_damper): k=" << contactParams_.contactStiffness 
               << " b=" << contactParams_.contactDamping 
               << " d=" << contactParams_.activationDistance << std::endl;
     if (const char* env = std::getenv("MORPHY_CONTACT_VIZ")) {
@@ -204,10 +204,18 @@ void DroneSimulationApp::step() {
         T_WP[std::to_string(i)] = matrixToJson(T);
     }
 
+    // Convert state vector to JSON array
+    nlohmann::json stateArray = nlohmann::json::array();
+    for (int i = 0; i < state_.size(); ++i) {
+        stateArray.push_back(state_(i));
+    }
+
     nlohmann::json payload;
     payload["T_WB"] = matrixToJson(T_WB);
     payload["T_WH"] = T_WH;
     payload["T_WP"] = T_WP;
+    payload["state"] = stateArray;
+    payload["simTime"] = simTime_;
 
     std::ostringstream name;
     name << "export/frame_" << std::setfill('0') << std::setw(4) << frameIndex++ << ".json";
