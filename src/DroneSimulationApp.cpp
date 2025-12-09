@@ -184,20 +184,23 @@ void DroneSimulationApp::step() {
 
     const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
 
+    const Eigen::Vector3d p_WB = state_.segment<3>(0);
     Eigen::Matrix4d T_WB = Eigen::Matrix4d::Identity();
     T_WB.block<3,3>(0,0) = q_base.toRotationMatrix();
-    T_WB.block<3,1>(0,3) = state_.segment<3>(0);
+    T_WB.block<3,1>(0,3) = p_WB;
 
     nlohmann::json T_WH = nlohmann::json::object();
     nlohmann::json T_WP = nlohmann::json::object();
     for (int i = 0; i < 4; ++i) {
         Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+        // World pose of hinge H: base pose + relative offset in world components
         T.block<3,3>(0,0) = arms[i].R_WH;
-        T.block<3,1>(0,3) = arms[i].W_r_BH;
+        T.block<3,1>(0,3) = p_WB + arms[i].W_r_BH;
         T_WH[std::to_string(i)] = matrixToJson(T);
 
+        // World pose of prop/arm tip P: base pose + offset to P in world components
         T.block<3,3>(0,0) = arms[i].R_WP;
-        T.block<3,1>(0,3) = arms[i].W_r_BP;
+        T.block<3,1>(0,3) = p_WB + arms[i].W_r_BP;
         T_WP[std::to_string(i)] = matrixToJson(T);
     }
 
