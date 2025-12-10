@@ -368,6 +368,8 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     contactParams.contactDamping = params_.contactDamping;
     contactParams.activationDistance = params_.contactActivationDistance;
     contactParams.enableCCD = params_.enableCCD;
+    contactParams.enableFriction = params_.enableFriction;
+    contactParams.frictionCoefficient = params_.frictionCoefficient;
     if (const char* env = std::getenv("MORPHY_CONTACT_K")) {
         try { contactParams.contactStiffness = std::stod(env); } catch (...) {}
     }

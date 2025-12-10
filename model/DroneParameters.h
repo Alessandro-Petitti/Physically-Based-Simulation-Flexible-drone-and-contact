@@ -38,6 +38,8 @@ struct DroneParameters {
     double contactStiffness{20.0};
     double contactDamping{0.5};
     double contactActivationDistance{0.0005};
+    bool enableFriction{true};  // Enable/disable Coulomb friction
+    double frictionCoefficient{0.5};  // Coulomb friction coefficient μ
     bool enableCCD{false};  // Continuous Collision Detection
     std::array<Eigen::Matrix4d, 4> T_BH{};
     std::array<Eigen::Matrix4d, 4> T_HP{};

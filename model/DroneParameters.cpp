@@ -89,6 +89,8 @@ DroneParameters loadDroneParameters(const std::string& path) {
     try { params.contactStiffness = yaml.nodeAtPath("contact.stiffness").asScalar(); } catch (...) {}
     try { params.contactDamping = yaml.nodeAtPath("contact.damping").asScalar(); } catch (...) {}
     try { params.contactActivationDistance = yaml.nodeAtPath("contact.activation_distance").asScalar(); } catch (...) {}
+    try { params.enableFriction = yaml.nodeAtPath("contact.enable_friction").asBool(); } catch (...) {}
+    try { params.frictionCoefficient = yaml.nodeAtPath("contact.friction_coefficient").asScalar(); } catch (...) {}
     try { params.enableCCD = yaml.nodeAtPath("contact.enable_ccd").asBool(); } catch (...) {}
 
     const std::array<std::string, 4> motorKeys{"motor_0", "motor_1", "motor_2", "motor_3"};

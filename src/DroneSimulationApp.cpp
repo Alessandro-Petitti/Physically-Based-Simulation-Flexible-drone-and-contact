@@ -51,19 +51,32 @@ DroneSimulationApp::DroneSimulationApp()
     implicitEuler_.setConfig(maxIt, tol, fdEps);
     irk_.setConfig(maxIt, tol, fdEps);
     logIntegratorSettings();
-    std::cout << "Joint params: k_joint=" << dynamics_.params().jointStiffness 
-              << " b_joint=" << dynamics_.params().jointDamping << std::endl;
+    
+    // Print simulation parameters summary
+    const auto& params = dynamics_.params();
+    std::cout << "\n========== SIMULATION PARAMETERS ==========\n";
+    std::cout << "--- Morphing Joints ---\n";
+    std::cout << "  k_joint (stiffness): " << params.jointStiffness << " N/rad\n";
+    std::cout << "  b_joint (damping):   " << params.jointDamping << " Ns/rad\n";
+    std::cout << "--- Contact Model (spring-damper) ---\n";
+    std::cout << "  stiffness (k):       " << params.contactStiffness << " N/m\n";
+    std::cout << "  damping (b):         " << params.contactDamping << " Ns/m\n";
+    std::cout << "  activation_dist:     " << params.contactActivationDistance << " m\n";
+    std::cout << "  enable_ccd:          " << (params.enableCCD ? "ON" : "OFF") << "\n";
+    std::cout << "  enable_friction:     " << (params.enableFriction ? "ON" : "OFF") << "\n";
+    std::cout << "  friction_coeff (μ):  " << params.frictionCoefficient << "\n";
+    std::cout << "============================================\n\n";
+    
     initRotorData();
 
     planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});
     // Load contact parameters from YAML (spring-damper model)
-    const auto& params = dynamics_.params();
     contactParams_.contactStiffness = params.contactStiffness;
     contactParams_.contactDamping = params.contactDamping;
     contactParams_.activationDistance = params.contactActivationDistance;
-    std::cout << "Contact params (spring_damper): k=" << contactParams_.contactStiffness 
-              << " b=" << contactParams_.contactDamping 
-              << " d=" << contactParams_.activationDistance << std::endl;
+    contactParams_.enableCCD = params.enableCCD;
+    contactParams_.enableFriction = params.enableFriction;
+    contactParams_.frictionCoefficient = params.frictionCoefficient;
     if (const char* env = std::getenv("MORPHY_CONTACT_VIZ")) {
         enableContactViz_ = (std::string(env) != "0");
     }

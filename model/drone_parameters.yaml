@@ -34,17 +34,19 @@ inertia:
   B_Izz_B: 0.0020
 
 morphing_joint:
-  b_joint: 0.1
+  b_joint: 1.0
   k_joint: 0.1
 # Contact parameters (spring-damper model)
 # Force: F = k * penetration * n + b * v_approach * n
 # For numerical stability: b << m/dt ≈ 1300 Ns/m (with dt=0.0002s, m=0.26kg)
 # Critical damping (ζ=1): b_crit = 2*sqrt(k*m) ≈ 102 Ns/m
 contact:
-  stiffness: 100.0     # k - rigidezza molla (N/m)
-  damping: 10.0         # b - smorzamento (Ns/m) - ζ ≈ 2 (overdamped, no bounce)
+  stiffness: 2000.0     # k - rigidezza molla (N/m)
+  damping: 500.0         # b - smorzamento (Ns/m) - ζ ≈ 2 (overdamped, no bounce)
   activation_distance: 0.001  # distanza di attivazione contatto (m)
   enable_ccd: false  # Continuous Collision Detection - previene tunneling
+  enable_friction:ture  # abilita/disabilita attrito di Coulomb
+  friction_coefficient: 0.8  # μ - coefficiente di attrito di Coulomb (tipico: 0.3-1.0)
 
 transforms:
   T_BH:

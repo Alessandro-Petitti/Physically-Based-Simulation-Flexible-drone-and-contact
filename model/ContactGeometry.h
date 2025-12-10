@@ -23,6 +23,8 @@ struct ContactParams {
     double contactStiffness{0.0};
     double contactDamping{0.0};
     double activationDistance{0.0};
+    bool enableFriction{true};  // Enable/disable Coulomb friction
+    double frictionCoefficient{0.5};  // Coulomb friction coefficient μ
     bool enableCCD{false};  // Continuous Collision Detection
 };
 

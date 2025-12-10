@@ -93,7 +93,9 @@ HullMesh loadHullMesh(const std::string& objPath, double scale) {
 ConvexHullShapes loadConvexHullShapes(const std::string& basePath, double scale) {
     ConvexHullShapes shapes;
 
+    // Prefer simplified hulls for better collision detection
     const std::vector<std::string> baseCandidates = {
+        (std::filesystem::path(basePath) / "core_battery_simplified_hull.obj").string(),
         (std::filesystem::path(basePath) / "core_battery_transformed_hull.obj").string(),
         (std::filesystem::path(basePath) / "core_battery_hull.obj").string()
     };
@@ -103,8 +105,9 @@ ConvexHullShapes loadConvexHullShapes(const std::string& basePath, double scale)
     }
     shapes.baseHull_B = loadHullVertices(baseFile, scale);
 
-    // Use arm_transformed_hull.obj to match arm_transformed.stl used by URDF
+    // Prefer simplified hulls for better collision detection
     const std::vector<std::string> armCandidates = {
+        (std::filesystem::path(basePath) / "arm_simplified_hull.obj").string(),
         (std::filesystem::path(basePath) / "arm_transformed_hull.obj").string(),
         (std::filesystem::path(basePath) / "arm_hull.obj").string()
     };
@@ -122,7 +125,9 @@ ConvexHullShapes loadConvexHullShapes(const std::string& basePath, double scale)
 ConvexHullMeshes loadConvexHullMeshes(const std::string& basePath, double scale) {
     ConvexHullMeshes meshes;
 
+    // Prefer simplified hulls for visualization
     const std::vector<std::string> baseCandidates = {
+        (std::filesystem::path(basePath) / "core_battery_simplified_hull.obj").string(),
         (std::filesystem::path(basePath) / "core_battery_transformed_hull.obj").string(),
         (std::filesystem::path(basePath) / "core_battery_hull.obj").string()
     };
@@ -132,8 +137,9 @@ ConvexHullMeshes loadConvexHullMeshes(const std::string& basePath, double scale)
     }
     meshes.baseHull_B = loadHullMesh(baseFile, scale);
 
-    // Use arm_transformed_hull.obj to match arm_transformed.stl used by URDF
+    // Prefer simplified hulls for visualization
     const std::vector<std::string> armCandidates = {
+        (std::filesystem::path(basePath) / "arm_simplified_hull.obj").string(),
         (std::filesystem::path(basePath) / "arm_transformed_hull.obj").string(),
         (std::filesystem::path(basePath) / "arm_hull.obj").string()
     };

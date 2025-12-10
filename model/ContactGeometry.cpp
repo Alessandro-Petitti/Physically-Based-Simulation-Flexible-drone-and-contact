@@ -17,16 +17,20 @@ const Eigen::Matrix3d kBaseAlign = Eigen::AngleAxisd(M_PI / 2.0, Eigen::Vector3d
 const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
 
 /**
- * Compute contact force using spring-damper model.
+ * Compute contact force using spring-damper model with Coulomb friction.
  * 
  * Force model:
- *   F = k * penetration * n + b * max(-v_n, 0) * n
+ *   F_n = k * penetration * n + b * max(-v_n, 0) * n  (normal force)
+ *   F_t = -μ * |F_n| * v_t / |v_t|  (tangential friction, opposes sliding)
+ *   F = F_n + F_t
  * 
  * where:
  *   - penetration = max(d_activation - phi, 0) with phi = n·x + d (signed distance)
  *   - v_n = velocity component along normal (positive = moving away from surface)
+ *   - v_t = velocity component tangent to surface (sliding velocity)
+ *   - μ = friction coefficient (Coulomb)
  *   - The damping only acts when approaching the surface (v_n < 0)
- *   - Force is always repulsive (pushes away from surface)
+ *   - Force is always repulsive in normal direction
  * 
  * NOTE: For numerical stability, damping should satisfy: b << m / dt
  * With dt=0.0002s and m=0.26kg, this means b << 1300 Ns/m
@@ -34,18 +38,31 @@ const Eigen::Matrix3d kArmAlign = Eigen::Matrix3d::Identity();
 inline Eigen::Vector3d contactForce(const Plane& plane,
                                     double penetration,
                                     double v_n,
+                                    const Eigen::Vector3d& v_point,
                                     const ContactParams& params) {
-    // Spring force: always pushes away from surface
-    const Eigen::Vector3d Fn = params.contactStiffness * penetration * plane.n;
-    
-    // Damping force: only when approaching surface (v_n < 0)
-    // When v_n < 0, we want a force in +n direction (opposing the motion)
-    // Fd = b * |v_n| * n = -b * v_n * n (since v_n < 0)
-    // But we only apply damping when approaching:
+    // Normal force: spring + damping
+    const double Fn_magnitude = params.contactStiffness * penetration;
     const double v_approach = std::max(-v_n, 0.0);  // positive when approaching
-    const Eigen::Vector3d Fd = params.contactDamping * v_approach * plane.n;
+    const double Fd_magnitude = params.contactDamping * v_approach;
+    const double total_normal = Fn_magnitude + Fd_magnitude;
+    const Eigen::Vector3d F_normal = total_normal * plane.n;
     
-    return Fn + Fd;
+    // Coulomb friction (if enabled)
+    Eigen::Vector3d F_friction = Eigen::Vector3d::Zero();
+    if (params.enableFriction && params.frictionCoefficient > 0.0) {
+        // Tangential velocity (sliding velocity on the surface)
+        const Eigen::Vector3d v_tangent = v_point - v_n * plane.n;
+        const double v_t_mag = v_tangent.norm();
+        
+        if (v_t_mag > 1e-8) {
+            // Maximum friction force (Coulomb limit)
+            const double F_friction_max = params.frictionCoefficient * total_normal;
+            // Friction opposes sliding: F_t = -μ * |F_n| * v_t / |v_t|
+            F_friction = -F_friction_max * (v_tangent / v_t_mag);
+        }
+    }
+    
+    return F_normal + F_friction;
 }
 } // namespace
 
@@ -79,7 +96,7 @@ std::vector<ContactPoint> computeContacts(
             const Eigen::Vector3d r_W = x_W - bodyOrigin_W;
             const Eigen::Vector3d v_point = v_bodyOrigin_W + omega_W.cross(r_W);
             const double v_n = v_point.dot(plane.n);
-            const Eigen::Vector3d F_contact = contactForce(plane, penetration, v_n, params);
+            const Eigen::Vector3d F_contact = contactForce(plane, penetration, v_n, v_point, params);
             if (F_contact.squaredNorm() < kForceEps) {
                 continue;
             }
@@ -208,7 +225,7 @@ std::vector<ContactPoint> computeContactsWithCCD(
             const double v_n = v_point.dot(plane.n);
             
             // Compute contact force
-            const Eigen::Vector3d F_contact = contactForce(plane, penetration, v_n, params);
+            const Eigen::Vector3d F_contact = contactForce(plane, penetration, v_n, v_point, params);
             if (F_contact.squaredNorm() < kForceEps) {
                 continue;
             }
