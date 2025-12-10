@@ -14,7 +14,7 @@
 #include <polyscope/point_cloud.h>
 #include <polyscope/surface_mesh.h>
 #include "SceneUtils.h"
-#include <nlohmann/json.hpp>
+#include "morphy_frame_exporter.hpp"
 
 namespace {
 const char* integratorLabel(IntegratorType type) {
@@ -140,100 +140,59 @@ void DroneSimulationApp::step() {
 
     rig_.update(baseTransform(), jointAngles());
 
-    // Export transforms for the base and arms
+    // Keep contacts/hulls in sync before exporting the current frame
+    updateContactsVisualization();
+    updateHullVisualization();
+
     static int frameIndex = 0;
     namespace fs = std::filesystem;
     static bool exportInitialized = false;
+    static fs::path exportRoot;
+    static fs::path framesDir;
 
     if (!exportInitialized) {
-        const fs::path exportDir("export");
+        exportRoot = fs::path("animation_data");
+        framesDir = exportRoot / "frames";
         std::error_code ec;
-        fs::remove_all(exportDir, ec);
+        fs::remove_all(exportRoot, ec);
         if (ec) {
-            std::cerr << "Warning: failed to clear export dir: " << ec.message() << '\n';
+            std::cerr << "Warning: failed to clear animation_data: " << ec.message() << '\n';
         }
-        fs::create_directories(exportDir, ec);
+        fs::create_directories(framesDir, ec);
         if (ec) {
-            std::cerr << "Warning: failed to create export dir: " << ec.message() << '\n';
+            std::cerr << "Warning: failed to create " << framesDir << ": " << ec.message() << '\n';
+        }
+
+        morphy::exporter::ExportConfig cfg;
+        cfg.fps = 1.0 / (dt_ * substeps_);
+        cfg.urdfPath = scene::resolveResource("graphics/urdf/morphy.urdf").string();
+        cfg.meshDir = scene::resolveResource("graphics/meshes").string();
+        const auto& params = dynamics_.params();
+        for (int i = 0; i < 4; ++i) {
+            cfg.armOffsets[i] = params.T_BH[i].block<3,1>(0,3);
+        }
+        cfg.armTipOffset = params.T_HP[0].block<3,1>(0,3);
+        cfg.meshPaths = {
+            {"base_link", scene::resolveResource("graphics/meshes/core_battery_transformed.stl").string()},
+            {"arm_motor", scene::resolveResource("graphics/meshes/arm_transformed.stl").string()}
+        };
+        if (!morphy::exporter::writeConfigJson(cfg, exportRoot)) {
+            std::cerr << "Failed to write animation export config\n";
         }
         exportInitialized = true;
     }
 
-    auto matrixToJson = [](const Eigen::Matrix4d& m) {
-        nlohmann::json arr = nlohmann::json::array();
-        for (int r = 0; r < 4; ++r) {
-            nlohmann::json row = nlohmann::json::array();
-            for (int c = 0; c < 4; ++c) {
-                row.push_back(m(r, c));
-            }
-            arr.push_back(row);
-        }
-        return arr;
-    };
-
-    Eigen::Quaterniond q_base(state_(3), state_(4), state_(5), state_(6));
-    if (q_base.norm() > 1e-9) q_base.normalize();
-    std::array<Eigen::Quaterniond,4> armQuat;
-    for (int i = 0; i < 4; ++i) {
-        armQuat[i] = Eigen::Quaterniond(state_(13 + 4 * i),
-                                        state_(14 + 4 * i),
-                                        state_(15 + 4 * i),
-                                        state_(16 + 4 * i));
-        if (armQuat[i].norm() > 1e-9) armQuat[i].normalize();
+    const auto frame = morphy::exporter::buildFrame(
+        state_, dynamics_, simTime_, frameIndex, thrust_, &lastContacts_);
+    if (!morphy::exporter::writeFrameJson(frame, framesDir)) {
+        std::cerr << "Failed to write frame " << frameIndex << '\n';
     }
-
-    const auto arms = dynamics_.computeArmFramesFromState(q_base, armQuat);
-
-    const Eigen::Vector3d p_WB = state_.segment<3>(0);
-    Eigen::Matrix4d T_WB = Eigen::Matrix4d::Identity();
-    T_WB.block<3,3>(0,0) = q_base.toRotationMatrix();
-    T_WB.block<3,1>(0,3) = p_WB;
-
-    nlohmann::json T_WH = nlohmann::json::object();
-    nlohmann::json T_WP = nlohmann::json::object();
-    for (int i = 0; i < 4; ++i) {
-        Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-        // World pose of hinge H: base pose + relative offset in world components
-        T.block<3,3>(0,0) = arms[i].R_WH;
-        T.block<3,1>(0,3) = p_WB + arms[i].W_r_BH;
-        T_WH[std::to_string(i)] = matrixToJson(T);
-
-        // World pose of prop/arm tip P: base pose + offset to P in world components
-        T.block<3,3>(0,0) = arms[i].R_WP;
-        T.block<3,1>(0,3) = p_WB + arms[i].W_r_BP;
-        T_WP[std::to_string(i)] = matrixToJson(T);
-    }
-
-    // Convert state vector to JSON array
-    nlohmann::json stateArray = nlohmann::json::array();
-    for (int i = 0; i < state_.size(); ++i) {
-        stateArray.push_back(state_(i));
-    }
-
-    nlohmann::json payload;
-    payload["T_WB"] = matrixToJson(T_WB);
-    payload["T_WH"] = T_WH;
-    payload["T_WP"] = T_WP;
-    payload["state"] = stateArray;
-    payload["simTime"] = simTime_;
-
-    std::ostringstream name;
-    name << "export/frame_" << std::setfill('0') << std::setw(4) << frameIndex++ << ".json";
-
-    std::ofstream file(name.str());
-    if (file) {
-        file << payload.dump(2);
-    } else {
-        std::cerr << "Failed to write " << name.str() << '\n';
-    }
+    ++frameIndex;
 
     if (simTime_ >= nextLogTime_) {
         logState();
         nextLogTime_ += logInterval_;
     }
-
-    updateContactsVisualization();
-    updateHullVisualization();
 }
 
 void DroneSimulationApp::logIntegratorSettings() const {

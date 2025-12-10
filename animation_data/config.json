@@ -1,0 +1,49 @@
+{
+  "arm_offsets_B": [
+    [
+      0.04,
+      -0.032,
+      0.0
+    ],
+    [
+      -0.04,
+      0.032,
+      0.0
+    ],
+    [
+      0.04,
+      0.032,
+      0.0
+    ],
+    [
+      -0.04,
+      -0.032,
+      0.0
+    ]
+  ],
+  "arm_tip_offset": [
+    0.07,
+    0.0,
+    0.0
+  ],
+  "fps": 2000.0,
+  "frames_dir": "frames",
+  "links": [
+    "base_link",
+    "connecting_link_0",
+    "connecting_link_1",
+    "connecting_link_2",
+    "connecting_link_3",
+    "arm_motor_0",
+    "arm_motor_1",
+    "arm_motor_2",
+    "arm_motor_3"
+  ],
+  "mesh_dir": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes",
+  "mesh_paths": {
+    "arm_motor": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes/arm_transformed.stl",
+    "base_link": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes/core_battery_transformed.stl"
+  },
+  "robot": "morphy",
+  "urdf": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/urdf/morphy.urdf"
+}
