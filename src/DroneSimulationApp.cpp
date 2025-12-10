@@ -51,7 +51,8 @@ DroneSimulationApp::DroneSimulationApp()
     implicitEuler_.setConfig(maxIt, tol, fdEps);
     irk_.setConfig(maxIt, tol, fdEps);
     logIntegratorSettings();
-    std::cout << "Hover thrust per rotor: " << hoverThrust() << " N" << std::endl;
+    std::cout << "Joint params: k_joint=" << dynamics_.params().jointStiffness 
+              << " b_joint=" << dynamics_.params().jointDamping << std::endl;
     initRotorData();
 
     planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});

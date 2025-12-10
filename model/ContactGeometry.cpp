@@ -120,3 +120,136 @@ std::vector<ContactPoint> computeContacts(
 
     return contacts;
 }
+
+std::vector<ContactPoint> computeContactsWithCCD(
+    const DroneDynamics::ArmKinematics arms[4],
+    const Eigen::Vector3d& W_r_B,
+    const Eigen::Matrix3d& R_WB,
+    const Eigen::Vector3d& v_WB,
+    const Eigen::Vector3d& W_omega_B,
+    const Eigen::Matrix<double,3,4>& W_omega_P,
+    const ConvexHullShapes& hulls,
+    const std::vector<Plane>& planes,
+    const ContactParams& params,
+    CCDPrevState& prevState,
+    double dt) {
+
+    // Compute current vertex positions
+    std::vector<Eigen::Vector3d> currBaseVertices_W;
+    std::array<std::vector<Eigen::Vector3d>, 4> currArmVertices_W;
+    
+    currBaseVertices_W.reserve(hulls.baseHull_B.size());
+    for (const auto& p_B : hulls.baseHull_B) {
+        currBaseVertices_W.push_back(W_r_B + R_WB * (kBaseAlign * p_B));
+    }
+    
+    for (int i = 0; i < 4; ++i) {
+        const auto& armHull = hulls.armHull_P[i];
+        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BH;
+        const Eigen::Matrix3d& R_WP = arms[i].R_WP;
+        currArmVertices_W[i].reserve(armHull.size());
+        for (const auto& p_P : armHull) {
+            currArmVertices_W[i].push_back(armOrigin_W + R_WP * (kArmAlign * p_P));
+        }
+    }
+
+    std::vector<ContactPoint> contacts;
+    const std::size_t estimatedContacts =
+        (hulls.baseHull_B.size() + 4 * hulls.armHull_P[0].size()) * planes.size();
+    contacts.reserve(estimatedContacts);
+
+    // Lambda to process a single vertex with CCD
+    auto processVertexCCD = [&](const Eigen::Vector3d& x_curr,
+                                 const Eigen::Vector3d& x_prev,
+                                 const Eigen::Vector3d& bodyOrigin_W,
+                                 const Eigen::Vector3d& omega_W,
+                                 const Eigen::Vector3d& v_bodyOrigin_W,
+                                 int bodyId,
+                                 bool hasPrev) {
+        for (const auto& plane : planes) {
+            const double phi_curr = plane.n.dot(x_curr) + plane.d;
+            
+            // Standard detection: within activation distance
+            bool inContact = (phi_curr < params.activationDistance);
+            
+            // CCD: check if we crossed the plane since last frame
+            double penetration = 0.0;
+            Eigen::Vector3d contactPoint = x_curr;
+            
+            if (hasPrev && params.enableCCD) {
+                const double phi_prev = plane.n.dot(x_prev) + plane.d;
+                
+                // Tunneling detection: was above plane, now below (or in activation zone)
+                if (phi_prev >= params.activationDistance && phi_curr < params.activationDistance) {
+                    inContact = true;
+                    // Compute intersection point along the trajectory
+                    // x_intersection = x_prev + t * (x_curr - x_prev) where phi(x_int) = activation_distance
+                    // phi_prev + t * (phi_curr - phi_prev) = activation_distance
+                    double denom = phi_prev - phi_curr;
+                    if (std::abs(denom) > 1e-12) {
+                        double t = (phi_prev - params.activationDistance) / denom;
+                        t = std::clamp(t, 0.0, 1.0);
+                        contactPoint = x_prev + t * (x_curr - x_prev);
+                    }
+                }
+            }
+            
+            if (!inContact) {
+                continue;
+            }
+            
+            // Compute penetration from current position
+            penetration = params.activationDistance - phi_curr;
+            if (penetration < 0.0) penetration = 0.0;
+            
+            // Compute velocity at contact point
+            const Eigen::Vector3d r_W = contactPoint - bodyOrigin_W;
+            const Eigen::Vector3d v_point = v_bodyOrigin_W + omega_W.cross(r_W);
+            const double v_n = v_point.dot(plane.n);
+            
+            // Compute contact force
+            const Eigen::Vector3d F_contact = contactForce(plane, penetration, v_n, params);
+            if (F_contact.squaredNorm() < kForceEps) {
+                continue;
+            }
+            
+            ContactPoint cp;
+            cp.x_W = contactPoint;
+            cp.n_W = plane.n;
+            cp.penetration = penetration;
+            cp.force_W = F_contact;
+            cp.bodyId = bodyId;
+            contacts.push_back(cp);
+        }
+    };
+
+    // Process base hull vertices
+    const bool hasPrevBase = prevState.valid && 
+                             prevState.baseVertices_W.size() == currBaseVertices_W.size();
+    for (std::size_t j = 0; j < currBaseVertices_W.size(); ++j) {
+        const Eigen::Vector3d x_prev = hasPrevBase ? prevState.baseVertices_W[j] : currBaseVertices_W[j];
+        processVertexCCD(currBaseVertices_W[j], x_prev, W_r_B, W_omega_B, v_WB, 0, hasPrevBase);
+    }
+
+    // Process arm hull vertices
+    for (int i = 0; i < 4; ++i) {
+        const Eigen::Vector3d armOrigin_W = W_r_B + arms[i].W_r_BH;
+        const Eigen::Vector3d v_bodyOrigin_W = v_WB + W_omega_B.cross(arms[i].W_r_BH);
+        const Eigen::Vector3d omega_W = W_omega_P.col(i);
+        
+        const bool hasPrevArm = prevState.valid &&
+                                prevState.armVertices_W[i].size() == currArmVertices_W[i].size();
+        
+        for (std::size_t j = 0; j < currArmVertices_W[i].size(); ++j) {
+            const Eigen::Vector3d x_prev = hasPrevArm ? prevState.armVertices_W[i][j] : currArmVertices_W[i][j];
+            processVertexCCD(currArmVertices_W[i][j], x_prev, armOrigin_W, omega_W, v_bodyOrigin_W, i + 1, hasPrevArm);
+        }
+    }
+
+    // Update previous state for next frame
+    prevState.baseVertices_W = std::move(currBaseVertices_W);
+    prevState.armVertices_W = std::move(currArmVertices_W);
+    prevState.valid = true;
+
+    return contacts;
+}

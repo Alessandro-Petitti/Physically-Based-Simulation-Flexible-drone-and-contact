@@ -38,6 +38,7 @@ struct DroneParameters {
     double contactStiffness{20.0};
     double contactDamping{0.5};
     double contactActivationDistance{0.0005};
+    bool enableCCD{false};  // Continuous Collision Detection
     std::array<Eigen::Matrix4d, 4> T_BH{};
     std::array<Eigen::Matrix4d, 4> T_HP{};
     std::array<Eigen::Matrix4d, 4> T_BP{};

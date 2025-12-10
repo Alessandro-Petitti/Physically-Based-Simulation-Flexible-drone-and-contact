@@ -133,7 +133,7 @@ def calculate_energy_from_frame(frame_data, params, T_BH_list, T_HP_list):
         Dizionario con tutte le componenti di energia
     """
     state = np.array(frame_data['state'])
-    sim_time = frame_data.get('simTime', 0.0)
+    sim_time = frame_data.get('t', frame_data.get('simTime', 0.0))  # Support both 't' and 'simTime'
     
     # ========================================
     # Estrai componenti dallo stato
@@ -332,11 +332,11 @@ def main():
     print(f"  k_joint (rigidezza molla): {params['morphing_joint']['k_joint']}")
     print(f"  b_joint (smorzamento): {params['morphing_joint']['b_joint']}")
     
-    # Trova tutti i frame JSON nella cartella export
-    frame_files = sorted(glob.glob("export/frame_*.json"))
+    # Trova tutti i frame JSON nella cartella animation_data/frames
+    frame_files = sorted(glob.glob("animation_data/frames/frame_*.json"))
     
     if not frame_files:
-        print("✗ Nessun file frame trovato in export/")
+        print("✗ Nessun file frame trovato in animation_data/frames/")
         return
     
     print(f"✓ Trovati {len(frame_files)} frame")

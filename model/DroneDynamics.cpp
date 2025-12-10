@@ -367,6 +367,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     contactParams.contactStiffness = params_.contactStiffness;
     contactParams.contactDamping = params_.contactDamping;
     contactParams.activationDistance = params_.contactActivationDistance;
+    contactParams.enableCCD = params_.enableCCD;
     if (const char* env = std::getenv("MORPHY_CONTACT_K")) {
         try { contactParams.contactStiffness = std::stod(env); } catch (...) {}
     }
@@ -383,16 +384,36 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
         Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -kGroundZ} // floor at z = kGroundZ
     };
 
-    const auto contacts = computeContacts(
-        arms.data(),
-        W_r_B,
-        R_WB,
-        v,
-        W_omega_B,
-        W_omega_P_mat,
-        kHulls,
-        kPlanes,
-        contactParams);
+    // CCD state persists across calls
+    static CCDPrevState ccdPrevState;
+    static const double kCCDdt = params_.integratorSettings.dt; // Use configured dt
+    
+    std::vector<ContactPoint> contacts;
+    if (contactParams.enableCCD) {
+        contacts = computeContactsWithCCD(
+            arms.data(),
+            W_r_B,
+            R_WB,
+            v,
+            W_omega_B,
+            W_omega_P_mat,
+            kHulls,
+            kPlanes,
+            contactParams,
+            ccdPrevState,
+            kCCDdt);
+    } else {
+        contacts = computeContacts(
+            arms.data(),
+            W_r_B,
+            R_WB,
+            v,
+            W_omega_B,
+            W_omega_P_mat,
+            kHulls,
+            kPlanes,
+            contactParams);
+    }
 
     Eigen::Vector3d contactForceSum = Eigen::Vector3d::Zero();
     Eigen::Vector3d contactTorqueBase_W = Eigen::Vector3d::Zero();

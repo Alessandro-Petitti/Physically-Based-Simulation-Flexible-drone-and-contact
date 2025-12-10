@@ -1,8 +1,8 @@
 base_frame: base_link
 integrator: irk # options: explicit_euler, implicit_euler, rk4, irk
 integrator_settings:
-  dt: 0.0001
-  substeps: 5
+  dt: 0.001
+  substeps: 10
   implicit_max_iterations: 6
   implicit_tolerance: 1.0e-6
   implicit_fd_epsilon: 1.0e-6
@@ -35,16 +35,16 @@ inertia:
 
 morphing_joint:
   b_joint: 0.1
-  k_joint: 0.5  
-
+  k_joint: 0.1
 # Contact parameters (spring-damper model)
 # Force: F = k * penetration * n + b * v_approach * n
 # For numerical stability: b << m/dt ≈ 1300 Ns/m (with dt=0.0002s, m=0.26kg)
 # Critical damping (ζ=1): b_crit = 2*sqrt(k*m) ≈ 102 Ns/m
 contact:
-  stiffness: 1000.0     # k - rigidezza molla (N/m)
-  damping: 2000.0         # b - smorzamento (Ns/m) - ζ ≈ 2 (overdamped, no bounce)
+  stiffness: 100.0     # k - rigidezza molla (N/m)
+  damping: 10.0         # b - smorzamento (Ns/m) - ζ ≈ 2 (overdamped, no bounce)
   activation_distance: 0.001  # distanza di attivazione contatto (m)
+  enable_ccd: false  # Continuous Collision Detection - previene tunneling
 
 transforms:
   T_BH:

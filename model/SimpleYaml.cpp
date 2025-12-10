@@ -49,6 +49,24 @@ const std::vector<double>& SimpleYaml::Node::asSequence() const {
     return sequence;
 }
 
+bool SimpleYaml::Node::asBool() const {
+    if (type != Type::Scalar) {
+        throw std::runtime_error("Requested bool from non-scalar YAML node");
+    }
+    // Check for common boolean representations
+    std::string lower = text;
+    for (char& c : lower) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (lower == "true" || lower == "yes" || lower == "on" || lower == "1") {
+        return true;
+    }
+    if (lower == "false" || lower == "no" || lower == "off" || lower == "0") {
+        return false;
+    }
+    throw std::runtime_error("Cannot parse as boolean: " + text);
+}
+
 SimpleYaml::SimpleYaml(const std::string& path) {
     std::ifstream file(path);
     if (!file) {

@@ -38,6 +38,7 @@ struct FrameData {
     std::unordered_map<std::string, LinkPose> poses;
     Eigen::Vector4d thrust{Eigen::Vector4d::Zero()};
     std::vector<ContactSample> contacts;
+    Eigen::VectorXd state;  // Full state vector for energy analysis
 };
 
 struct ExportConfig {
@@ -110,6 +111,7 @@ inline FrameData buildFrame(const Eigen::VectorXd& state,
     frame.t = timeSeconds;
     frame.idx = frameIndex;
     frame.thrust = thrust;
+    frame.state = state;  // Store full state for energy analysis
 
     const Eigen::Vector3d p_WB = state.segment<3>(0);
     Eigen::Quaterniond q_base = baseQuaternionFromState(state);
@@ -176,6 +178,15 @@ inline bool writeFrameJson(const FrameData& frame,
         });
     }
     j["contacts"] = contacts;
+
+    // Save full state vector for energy analysis
+    if (frame.state.size() > 0) {
+        nlohmann::json stateJson = nlohmann::json::array();
+        for (int i = 0; i < frame.state.size(); ++i) {
+            stateJson.push_back(frame.state[i]);
+        }
+        j["state"] = stateJson;
+    }
 
     std::ostringstream name;
     name << "frame_" << std::setfill('0') << std::setw(4) << frame.idx << ".json";

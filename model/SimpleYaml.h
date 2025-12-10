@@ -28,6 +28,7 @@ public:
         double asScalar() const;
         const std::string& asString() const;
         const std::vector<double>& asSequence() const;
+        bool asBool() const;
     };
 
     explicit SimpleYaml(const std::string& path);
