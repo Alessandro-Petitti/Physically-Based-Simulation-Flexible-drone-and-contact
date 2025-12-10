@@ -39,11 +39,74 @@
     "arm_motor_2",
     "arm_motor_3"
   ],
-  "mesh_dir": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes",
+  "mesh_dir": "/Users/alessandro/Documents/SP/Code/morphy_sim/my_robot_description/meshes",
   "mesh_paths": {
-    "arm_motor": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes/arm_transformed.stl",
-    "base_link": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/meshes/core_battery_transformed.stl"
+    "arm_motor": "/Users/alessandro/Documents/SP/Code/morphy_sim/my_robot_description/meshes/arm_transformed.stl",
+    "base_link": "/Users/alessandro/Documents/SP/Code/morphy_sim/my_robot_description/meshes/core_battery_transformed.stl"
   },
   "robot": "morphy",
-  "urdf": "/home/parallels/Documents/Physically-Based-Simulation-Flexible-drone-and-contact/graphics/urdf/morphy.urdf"
+  "urdf": "/Users/alessandro/Documents/SP/Code/morphy_sim/my_robot_description/urdf/morphy.urdf",
+  "mesh_scale": 0.001,
+  "visual_offsets": {
+    "base_link": {
+      "xyz": [
+        0,
+        0,
+        0
+      ],
+      "rpy": [
+        0,
+        0,
+        1.57079
+      ]
+    },
+    "arm_motor_0": {
+      "xyz": [
+        0,
+        0,
+        -0.07
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "arm_motor_1": {
+      "xyz": [
+        0,
+        0,
+        -0.07
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "arm_motor_2": {
+      "xyz": [
+        0,
+        0,
+        -0.07
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "arm_motor_3": {
+      "xyz": [
+        0,
+        0,
+        -0.07
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    }
+  }
 }

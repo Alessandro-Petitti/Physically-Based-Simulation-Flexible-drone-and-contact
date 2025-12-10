@@ -163,22 +163,6 @@ void DroneSimulationApp::step() {
             std::cerr << "Warning: failed to create " << framesDir << ": " << ec.message() << '\n';
         }
 
-        morphy::exporter::ExportConfig cfg;
-        cfg.fps = 1.0 / (dt_ * substeps_);
-        cfg.urdfPath = scene::resolveResource("graphics/urdf/morphy.urdf").string();
-        cfg.meshDir = scene::resolveResource("graphics/meshes").string();
-        const auto& params = dynamics_.params();
-        for (int i = 0; i < 4; ++i) {
-            cfg.armOffsets[i] = params.T_BH[i].block<3,1>(0,3);
-        }
-        cfg.armTipOffset = params.T_HP[0].block<3,1>(0,3);
-        cfg.meshPaths = {
-            {"base_link", scene::resolveResource("graphics/meshes/core_battery_transformed.stl").string()},
-            {"arm_motor", scene::resolveResource("graphics/meshes/arm_transformed.stl").string()}
-        };
-        if (!morphy::exporter::writeConfigJson(cfg, exportRoot)) {
-            std::cerr << "Failed to write animation export config\n";
-        }
         exportInitialized = true;
     }
 
