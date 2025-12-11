@@ -443,11 +443,11 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
         }
     }
     // Safety clamps: keep penalty forces/torques within a realistic range for a 0.26 kg drone.
-    // The total weight is ~2.6 N, lever arms are <0.1 m, so 5–10x weight is already very generous.
-    contactForceSum = clampVec(contactForceSum, 10.0);   // was 200.0
-    contactTorqueBase_W = clampVec(contactTorqueBase_W, 1.0); // was 50.0
+    // Back to the looser limits used in FUNGEE so contact forces are not over-attenuated.
+    contactForceSum = clampVec(contactForceSum, 200.0);
+    contactTorqueBase_W = clampVec(contactTorqueBase_W, 50.0);
     for (auto& tau : P_tau_contact) {
-        tau = clampVec(tau, 0.5); // was 20.0
+        tau = clampVec(tau, 20.0);
     }
 
     Eigen::Matrix<double,18,18> A = Eigen::Matrix<double,18,18>::Zero();
