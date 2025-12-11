@@ -1,15 +1,11 @@
 #pragma once
 
+#include "ContactTypes.h"
 #include "DroneDynamics.h"
 #include "HullLoader.h"
 
 #include <Eigen/Dense>
 #include <vector>
-
-struct Plane {
-    Eigen::Vector3d n; // unit normal pointing into the workspace
-    double d;          // plane equation: n.dot(x) + d = 0
-};
 
 struct ContactPoint {
     Eigen::Vector3d x_W;      // contact point in world coordinates

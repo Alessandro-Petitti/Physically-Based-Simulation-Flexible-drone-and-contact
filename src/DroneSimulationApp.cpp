@@ -33,6 +33,7 @@ DroneSimulationApp::DroneSimulationApp()
       state_(Eigen::VectorXd::Zero(DroneDynamics::kStateSize)) {
     state_.segment<3>(0) = dynamics_.params().x0_pos;
     state_.segment<4>(3) = dynamics_.params().x0_rotation;
+    state_.segment<3>(7) = dynamics_.params().x0_vel;
     if (state_.segment<4>(3).norm() < 1e-9) {
         state_(3) = 1.0;
         state_(4) = state_(5) = state_(6) = 0.0;
@@ -65,11 +66,17 @@ DroneSimulationApp::DroneSimulationApp()
     std::cout << "  enable_ccd:          " << (params.enableCCD ? "ON" : "OFF") << "\n";
     std::cout << "  enable_friction:     " << (params.enableFriction ? "ON" : "OFF") << "\n";
     std::cout << "  friction_coeff (μ):  " << params.frictionCoefficient << "\n";
+    if (params.contactBoxEnabled) {
+        std::cout << "  bounds:              box "
+                  << params.contactBoxSize.transpose() << " m @ "
+                  << params.contactBoxCenter.transpose() << "\n";
+    } else {
+        std::cout << "  ground_z:            " << params.contactGroundHeight << " m\n";
+    }
     std::cout << "============================================\n\n";
     
     initRotorData();
 
-    planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), 0.0});
     // Load contact parameters from YAML (spring-damper model)
     contactParams_.contactStiffness = params.contactStiffness;
     contactParams_.contactDamping = params.contactDamping;
@@ -77,14 +84,16 @@ DroneSimulationApp::DroneSimulationApp()
     contactParams_.enableCCD = params.enableCCD;
     contactParams_.enableFriction = params.enableFriction;
     contactParams_.frictionCoefficient = params.frictionCoefficient;
+    contactBoxEnabled_ = params.contactBoxEnabled;
+    contactBoxCenter_ = params.contactBoxCenter;
+    contactBoxSize_ = params.contactBoxSize;
+    planes_ = dynamics_.contactPlanes();
+    groundHeight_ = params.contactGroundHeight;
     if (const char* env = std::getenv("MORPHY_CONTACT_VIZ")) {
         enableContactViz_ = (std::string(env) != "0");
     }
     if (const char* env = std::getenv("MORPHY_START_CLEARANCE")) {
         try { startHeightClearance_ = std::stod(env); } catch (...) {}
-    }
-    if (const char* env = std::getenv("MORPHY_GROUND_Z")) {
-        try { groundHeight_ = std::stod(env); } catch (...) {}
     }
     if (const char* env = std::getenv("MORPHY_DISABLE_PID")) {
         enableController_ = (std::string(env) == "0");
@@ -92,8 +101,6 @@ DroneSimulationApp::DroneSimulationApp()
     if (const char* env = std::getenv("MORPHY_FREE_FALL")) {
         if (std::string(env) == "1") enableController_ = false;
     }
-    planes_.clear();
-    planes_.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -groundHeight_});
 }
 
 bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
@@ -103,16 +110,27 @@ bool DroneSimulationApp::initializeScene(const std::string& urdfPath) {
     double hullScale = 0.001; // force millimeters -> meters
     hulls_ = loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), hullScale);
     hullMeshes_ = loadConvexHullMeshes(scene::resolveResource("graphics/hulls").string(), hullScale);
-    // Ensure the drone is at least startHeightClearance_ above the ground
-    const double zmin = baseHullZMin();
+    // Ensure the drone starts inside the contact workspace with some clearance
     state_(0) = 0.0;
     state_(1) = 0.0;
-    if (std::isfinite(zmin)) {
-        double minZ = groundHeight_ - zmin + startHeightClearance_;
-        if (state_(2) < minZ) state_(2) = minZ;
+    if (contactBoxEnabled_ && contactBoxSize_.minCoeff() > 0.0) {
+        const Eigen::Vector3d half = 0.5 * contactBoxSize_;
+        Eigen::Vector3d lower = contactBoxCenter_ - half + Eigen::Vector3d::Constant(startHeightClearance_);
+        Eigen::Vector3d upper = contactBoxCenter_ + half - Eigen::Vector3d::Constant(startHeightClearance_);
+        Eigen::Vector3d pos = state_.segment<3>(0);
+        pos = pos.cwiseMin(upper).cwiseMax(lower);
+        state_.segment<3>(0) = pos;
+        groundHeight_ = contactBoxCenter_.z() - half.z();
     } else {
-        if (state_(2) < groundHeight_ + startHeightClearance_) {
-            state_(2) = groundHeight_ + startHeightClearance_;
+        // Preserve original ground-plane logic
+        const double zmin = baseHullZMin();
+        if (std::isfinite(zmin)) {
+            double minZ = groundHeight_ - zmin + startHeightClearance_;
+            if (state_(2) < minZ) state_(2) = minZ;
+        } else {
+            if (state_(2) < groundHeight_ + startHeightClearance_) {
+                state_(2) = groundHeight_ + startHeightClearance_;
+            }
         }
     }
     rig_.update(baseTransform(), jointAngles());
@@ -549,6 +567,44 @@ void DroneSimulationApp::initializeGroundPlaneVisualization() {
     // viewAdjust: same as UrdfRig uses for URDF meshes visualization
     static const Eigen::Matrix3d viewAdjust = 
         Eigen::AngleAxisd(-M_PI / 2.0, Eigen::Vector3d::UnitX()).toRotationMatrix();
+
+    // Box visualization (axis-aligned, centered at contactBoxCenter_)
+    if (contactBoxEnabled_ && contactBoxSize_.minCoeff() > 0.0) {
+        const Eigen::Vector3d half = 0.5 * contactBoxSize_;
+        std::array<Eigen::Vector3d,8> corners = {
+            contactBoxCenter_ + Eigen::Vector3d(-half.x(), -half.y(), -half.z()),
+            contactBoxCenter_ + Eigen::Vector3d( half.x(), -half.y(), -half.z()),
+            contactBoxCenter_ + Eigen::Vector3d( half.x(),  half.y(), -half.z()),
+            contactBoxCenter_ + Eigen::Vector3d(-half.x(),  half.y(), -half.z()),
+            contactBoxCenter_ + Eigen::Vector3d(-half.x(), -half.y(),  half.z()),
+            contactBoxCenter_ + Eigen::Vector3d( half.x(), -half.y(),  half.z()),
+            contactBoxCenter_ + Eigen::Vector3d( half.x(),  half.y(),  half.z()),
+            contactBoxCenter_ + Eigen::Vector3d(-half.x(),  half.y(),  half.z())
+        };
+
+        std::vector<glm::vec3> verts;
+        verts.reserve(corners.size());
+        for (const auto& c : corners) {
+            Eigen::Vector3d v = viewAdjust * c;
+            verts.emplace_back(static_cast<float>(v.x()),
+                               static_cast<float>(v.y()),
+                               static_cast<float>(v.z()));
+        }
+
+        std::vector<std::vector<size_t>> faces = {
+            {0, 1, 2, 3}, // bottom
+            {4, 5, 6, 7}, // top
+            {0, 1, 5, 4}, // -y
+            {2, 3, 7, 6}, // +y
+            {1, 2, 6, 5}, // +x
+            {0, 3, 7, 4}  // -x
+        };
+
+        auto* mesh = polyscope::registerSurfaceMesh("contact_box", verts, faces);
+        mesh->setSurfaceColor({0.2f, 0.6f, 1.0f});
+        mesh->setTransparency(0.85f);
+        return;
+    }
 
     // Create a large quad at z = groundHeight_
     const double size = 2.0; // 2m x 2m plane

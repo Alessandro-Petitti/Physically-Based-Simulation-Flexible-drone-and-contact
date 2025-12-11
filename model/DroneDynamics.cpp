@@ -10,6 +10,7 @@
 #include <sstream>
 #include <chrono>
 #include <iostream>
+#include <cstdlib>
 
 namespace {
 constexpr double kQuatEps = 1e-12;
@@ -23,12 +24,52 @@ void assertFinite(const Eigen::MatrixBase<Derived>& value, const std::string& la
         throw std::runtime_error(oss.str());
     }
 }
+
+std::vector<Plane> buildContactPlanes(DroneParameters& params) {
+    std::vector<Plane> planes;
+
+    double groundZ = params.contactGroundHeight;
+    if (const char* env = std::getenv("MORPHY_GROUND_Z")) {
+        try { groundZ = std::stod(env); } catch (...) {}
+    }
+    params.contactGroundHeight = groundZ;
+
+    if (params.contactBoxEnabled) {
+        const Eigen::Vector3d halfSize = 0.5 * params.contactBoxSize;
+        if (halfSize.minCoeff() > 0.0) {
+            const Eigen::Vector3d c = params.contactBoxCenter;
+            params.contactGroundHeight = c.z() - halfSize.z();
+            // -X wall
+            planes.push_back(Plane{Eigen::Vector3d(1.0, 0.0, 0.0), -(c.x() - halfSize.x())});
+            // +X wall
+            planes.push_back(Plane{Eigen::Vector3d(-1.0, 0.0, 0.0),  (c.x() + halfSize.x())});
+            // -Y wall
+            planes.push_back(Plane{Eigen::Vector3d(0.0, 1.0, 0.0), -(c.y() - halfSize.y())});
+            // +Y wall
+            planes.push_back(Plane{Eigen::Vector3d(0.0, -1.0, 0.0),  (c.y() + halfSize.y())});
+            // Bottom (-Z) points upward
+            planes.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -(c.z() - halfSize.z())});
+            // Top (+Z) points downward
+            planes.push_back(Plane{Eigen::Vector3d(0.0, 0.0, -1.0),  (c.z() + halfSize.z())});
+        } else {
+            params.contactBoxEnabled = false;
+        }
+    }
+
+    // Fallback to ground plane if box is disabled or invalid
+    if (planes.empty()) {
+        planes.push_back(Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -groundZ});
+    }
+
+    return planes;
+}
 } // namespace
 
 DroneDynamics::DroneDynamics(const std::string& yamlPath)
     : params_(loadDroneParameters(yamlPath)) {
     jointDamping_ = params_.jointDamping * Eigen::Matrix3d::Identity();
     jointStiffness_ = params_.jointStiffness * Eigen::Matrix3d::Identity();
+    contactPlanes_ = buildContactPlanes(params_);
 }
 
 Eigen::Quaterniond DroneDynamics::makeQuaternion(const Eigen::Vector4d& wxyz) {
@@ -355,12 +396,6 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     // Contact computation (penalty + damping)
     // ----------------------
     static const double kHullScale = 0.001; // OBJ in millimeters -> meters
-    static const double kGroundZ = []{
-        if (const char* env = std::getenv("MORPHY_GROUND_Z")) {
-            try { return std::stod(env); } catch (...) {}
-        }
-        return 0.0;
-    }();
     
     // Use contact parameters from YAML (params_), with environment override
     ContactParams contactParams;
@@ -382,9 +417,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
     
     static const ConvexHullShapes kHulls =
         loadConvexHullShapes(scene::resolveResource("graphics/hulls").string(), kHullScale);
-    static const std::vector<Plane> kPlanes = {
-        Plane{Eigen::Vector3d(0.0, 0.0, 1.0), -kGroundZ} // floor at z = kGroundZ
-    };
+    const std::vector<Plane>& planes = contactPlanes_;
 
     // CCD state persists across calls
     static CCDPrevState ccdPrevState;
@@ -400,7 +433,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
             W_omega_B,
             W_omega_P_mat,
             kHulls,
-            kPlanes,
+            planes,
             contactParams,
             ccdPrevState,
             kCCDdt);
@@ -413,7 +446,7 @@ Eigen::VectorXd DroneDynamics::derivative(const Eigen::VectorXd& state,
             W_omega_B,
             W_omega_P_mat,
             kHulls,
-            kPlanes,
+            planes,
             contactParams);
     }
 

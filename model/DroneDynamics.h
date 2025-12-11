@@ -1,10 +1,13 @@
 #pragma once
 
 #include "DroneParameters.h"
+#include "ContactTypes.h"
 
 #include <Eigen/Dense>
 #include <array>
 #include <string>
+#include <vector>
+
 
 class DroneDynamics {
 public:
@@ -29,6 +32,7 @@ public:
                                const Eigen::Vector4d& thrust) const;
 
     const DroneParameters& params() const { return params_; }
+    const std::vector<Plane>& contactPlanes() const { return contactPlanes_; }
     std::array<Eigen::Vector3d, 4> armEulerZYX(const Eigen::VectorXd& state) const;
     std::array<ArmKinematics,4> computeArmFramesFromState(
         const Eigen::Quaterniond& q_base,
@@ -39,6 +43,7 @@ private:
     Eigen::Matrix3d jointDamping_;
     Eigen::Matrix3d jointStiffness_;
     Eigen::Vector3d gravity_{0.0, 0.0, -9.8066};
+    std::vector<Plane> contactPlanes_;
 
     static Eigen::Quaterniond makeQuaternion(const Eigen::Vector4d& wxyz);
     static Eigen::Matrix3d skew(const Eigen::Vector3d& v);

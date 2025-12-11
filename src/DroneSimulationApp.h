@@ -84,6 +84,9 @@ private:
     double startHeightClearance_{0.05}; // extra clearance above the hull's lowest point
     double groundHeight_{0.0};
     bool enableHullViz_{true};
+    bool contactBoxEnabled_{false};
+    Eigen::Vector3d contactBoxCenter_{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d contactBoxSize_{Eigen::Vector3d::Zero()};
 
     void initializeHullVisualization();
     void updateHullVisualization();

@@ -8,7 +8,9 @@ integrator_settings:
   implicit_fd_epsilon: 1.0e-6
 
 # Posizione iniziale
-x0_pos: [0.0, 0.0, 0.5]
+x0_pos: [0.0, 0.0, 0.0]
+# Velocità iniziale (m/s)
+v0: [5.0, 5.0, -7.0]
 
 # Rotazione iniziale: 90° attorno all'asse Y (pitch) - drone "di faccia"
 # Quaternione wxyz: [cos(45°), 0, sin(45°), 0] = [0.7071, 0, 0.7071, 0]
@@ -41,12 +43,16 @@ morphing_joint:
 # For numerical stability: b << m/dt ≈ 1300 Ns/m (with dt=0.0002s, m=0.26kg)
 # Critical damping (ζ=1): b_crit = 2*sqrt(k*m) ≈ 102 Ns/m
 contact:
-  stiffness: 500.0     # k - rigidezza molla (N/m)
+  stiffness: 100.0     # k - rigidezza molla (N/m)
   damping: 50.0         # b - smorzamento (Ns/m) - ζ ≈ 2 (overdamped, no bounce)
   activation_distance: 0.001  # distanza di attivazione contatto (m)
   enable_ccd: false  # Continuous Collision Detection - previene tunneling
   enable_friction: true  # abilita/disabilita attrito di Coulomb
   friction_coefficient: 0.8  # μ - coefficiente di attrito di Coulomb (tipico: 0.3-1.0)
+  box_enabled: true
+  box_center: [0.0, 0.0, 0.0]
+  box_size: [0.5, 0.4, 0.4]  # x, y, z in metri
+  ground_height: 0.0  # usato solo se box_enabled = false
 
 transforms:
   T_BH:

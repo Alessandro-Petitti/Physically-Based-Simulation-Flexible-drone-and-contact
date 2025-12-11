@@ -98,6 +98,11 @@ All physical constants live in `model/drone_parameters.yaml`. Important sections
 - `transforms`: rigid transforms from base to hinge (`T_BH`), hinge to prop (`T_HP`), base to prop (`T_BP`).
 - `integrator`: one of `explicit_euler`, `rk4`, `implicit_euler`, `irk` (implicit midpoint).
 - `integrator_settings`: `dt`, `substeps`, `implicit_max_iterations`, `implicit_tolerance`, `implicit_fd_epsilon`.
+- `initial state`: `x0_pos`, `x0_rotation` and `v0`/`x0_vel` for base linear velocity.
+- `contact` environment: keep the classic ground plane via `contact.ground_height`, or enable an
+  axis-aligned box with `contact.box_enabled`, `contact.box_center` and `contact.box_size`
+  (defaults to a 0.3 m cube centered at the origin so the drone bounces on every wall). Set
+  `MORPHY_FREE_FALL=1` to let it simply drop and rebound without the PID.
 
 Editing this file does not require recompiling; the values are loaded at runtime.
 

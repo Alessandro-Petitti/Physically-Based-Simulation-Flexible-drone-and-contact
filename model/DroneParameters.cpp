@@ -92,6 +92,20 @@ DroneParameters loadDroneParameters(const std::string& path) {
     try { params.enableFriction = yaml.nodeAtPath("contact.enable_friction").asBool(); } catch (...) {}
     try { params.frictionCoefficient = yaml.nodeAtPath("contact.friction_coefficient").asScalar(); } catch (...) {}
     try { params.enableCCD = yaml.nodeAtPath("contact.enable_ccd").asBool(); } catch (...) {}
+    try { params.contactGroundHeight = yaml.nodeAtPath("contact.ground_height").asScalar(); } catch (...) {}
+    try { params.contactBoxEnabled = yaml.nodeAtPath("contact.box_enabled").asBool(); } catch (...) {}
+    try {
+        const auto center = yaml.nodeAtPath("contact.box_center").asSequence();
+        if (center.size() == 3) {
+            params.contactBoxCenter = Eigen::Vector3d(center[0], center[1], center[2]);
+        }
+    } catch (const std::exception&) {}
+    try {
+        const auto size = yaml.nodeAtPath("contact.box_size").asSequence();
+        if (size.size() == 3) {
+            params.contactBoxSize = Eigen::Vector3d(size[0], size[1], size[2]);
+        }
+    } catch (const std::exception&) {}
 
     const std::array<std::string, 4> motorKeys{"motor_0", "motor_1", "motor_2", "motor_3"};
     for (size_t i = 0; i < 4; ++i) {
@@ -156,6 +170,19 @@ DroneParameters loadDroneParameters(const std::string& path) {
             if (n > 1e-9) params.x0_rotation /= n;
         }
     } catch (const std::exception&) {}
+    try {
+        const auto vel = yaml.nodeAtPath("v0").asSequence();
+        if (vel.size() == 3) {
+            params.x0_vel = Eigen::Vector3d(vel[0], vel[1], vel[2]);
+        }
+    } catch (const std::exception&) {
+        try {
+            const auto vel = yaml.nodeAtPath("x0_vel").asSequence();
+            if (vel.size() == 3) {
+                params.x0_vel = Eigen::Vector3d(vel[0], vel[1], vel[2]);
+            }
+        } catch (const std::exception&) {}
+    }
 
     return params;
 }

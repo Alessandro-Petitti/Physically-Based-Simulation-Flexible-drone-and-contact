@@ -41,6 +41,10 @@ struct DroneParameters {
     bool enableFriction{true};  // Enable/disable Coulomb friction
     double frictionCoefficient{0.5};  // Coulomb friction coefficient μ
     bool enableCCD{false};  // Continuous Collision Detection
+    bool contactBoxEnabled{false};
+    Eigen::Vector3d contactBoxCenter{Eigen::Vector3d::Zero()};
+    Eigen::Vector3d contactBoxSize{Eigen::Vector3d::Zero()};
+    double contactGroundHeight{0.0};  // fallback for plane-only mode
     std::array<Eigen::Matrix4d, 4> T_BH{};
     std::array<Eigen::Matrix4d, 4> T_HP{};
     std::array<Eigen::Matrix4d, 4> T_BP{};
@@ -48,6 +52,7 @@ struct DroneParameters {
     IntegratorSettings integratorSettings{};
     Eigen::Vector3d x0_pos{Eigen::Vector3d::Zero()};
     Eigen::Vector4d x0_rotation{1.0, 0.0, 0.0, 0.0}; // wxyz
+    Eigen::Vector3d x0_vel{Eigen::Vector3d::Zero()};
 };
 
 DroneParameters loadDroneParameters(const std::string& path);
