@@ -1,141 +1,123 @@
 # Physically Based Simulation – Flexible Drone & Contact
 
-This project visualizes and simulates a morphing quadrotor in real time. It couples a C++ port of the original CasADi dynamics with a Polyscope viewer that renders the URDF geometry while the state is numerically integrated. You can switch between a pure viewer mode (to inspect the mesh hierarchy) or a full simulation mode with a simple PID position controller.
-
-## Features
-
-- **Parametric dynamics**: The full 41‑state, 18‑constraint system from the Python/CasADi model is reimplemented in C++ using Eigen for linear algebra. The 18×18 block system is assembled every frame to recover linear and angular accelerations for the base and each arm.
-- **Configurable parameters**: All masses, inertias, propeller constants, joint stiffness/damping and rigid transforms are read from `model/drone_parameters.yaml`. No hard-coded values live in the source code.
-- **Polyscope viewer**: Meshes from the URDF (`graphics/urdf/morphy.urdf`) are registered via Assimp. The Polyscope ground plane is off by default; enable it from the UI if you need a visual reference at `z = 0`.
-- **Configurable integrators**: Choose between explicit Euler, RK4, implicit Euler, or implicit midpoint IRK. Time step, substeps, and implicit solver settings are read from the YAML.
-- **PID hover controller**: A simple PID tracks a desired world-frame position (default `(1, 1, 1)` m) and distributes the required thrust evenly across motors, saturating at the per-rotor maximum defined in the YAML.
-
-## Dependencies
-
-The project uses CMake to pull in the required libraries via `FetchContent`:
-
-- [Eigen 3.4](https://gitlab.com/libeigen/eigen)
-- [Polyscope 2.2](https://github.com/nmwsharp/polyscope) with GLFW backend
-- [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader)
-- [Assimp](https://www.assimp.org/) (found from the system)
-- URDFDOM headers/libraries (also from the system)
-
-Ensure the following packages/tools are installed on your system:
-
-- CMake ≥ 3.16
-- A C++17 compiler (tested with GCC 13)
-- Git (for the FetchContent dependencies)
-- `libassimp-dev`, `liburdfdom-dev` (or the equivalents on your platform)
-
-On Ubuntu you can install the runtime prerequisites via:
-
-```bash
-sudo apt update
-sudo apt install build-essential cmake git libassimp-dev liburdfdom-dev
-```
-
-## Building
-
-Clone the repository (submodules are not used; all third-party code is fetched at configure time) and run:
-
+## Quick build (commands first)
 ```bash
 cmake -S . -B build
 cmake --build build
 ```
 
-This produces the `build/morphy_viewer` executable. If you see `Exec format error` or similar, remove the `build/` directory and reconfigure.
+- Optional hull utility: `cmake -S . -B build -DENABLE_MESH_HULL=ON && cmake --build build --target mesh_convex_hull`
+- If you hit toolchain/config errors, remove `build/` and rerun the two commands above.
 
-## Running
+## Dependencies
+- CMake ≥ 3.16, C++17 compiler, Git
+- System packages: `libassimp-dev`, `liburdfdom-dev` (or platform equivalents)
+- Ubuntu example:
+  ```bash
+  sudo apt update
+  sudo apt install build-essential cmake git libassimp-dev liburdfdom-dev
+  ```
 
-- **Simulation mode (default)**: integrates the dynamics with PID control toward `(1, 1, 1)` m.
+## What this repo does
+Real-time C++ simulation of a morphing quadrotor, rendering the URDF meshes with Polyscope while numerically integrating a 41-state model (base + four arms). Physics, controller, integrator choice, and contact shapes come from `model/drone_parameters.yaml` and runtime environment toggles.
 
+## Run modes
+- Default simulation (PID + contacts + viewer):
   ```bash
   ./build/morphy_viewer
   ```
-
-- **Viewer-only mode**: load the URDF meshes without running dynamics (useful for inspecting transforms).
-
+- Viewer only (no dynamics, just URDF inspection):
   ```bash
   MORPHY_VIEW_ONLY=1 ./build/morphy_viewer
   ```
+- Headless / CI render-safe:
+  ```bash
+  MORPHY_POLYSCOPE_BACKEND=openGL_mock ./build/morphy_viewer
+  ```
+- Hide contact point debug overlay:
+  ```bash
+  MORPHY_CONTACT_VIZ=0 ./build/morphy_viewer
+  ```
+- Every run writes JSON frames to `animation_data/frames/` (cleared on startup) for offline playback/export.
 
-The viewer uses Polyscope with a GLFW window. If you are running headless, set `MORPHY_POLYSCOPE_BACKEND=openGL_mock` to bypass the GUI.
+## Integrators (all configured in `model/drone_parameters.yaml`)
+- Options: `integrator: explicit_euler`, `rk4`, `implicit_euler`, or `irk` (implicit midpoint Runge–Kutta).
+- Timestep and solver knobs live under `integrator_settings` (`dt`, `substeps`, `implicit_max_iterations`, `implicit_tolerance`, `implicit_fd_epsilon`).
+- Example: run with RK4 and 5 substeps after setting the YAML accordingly:
+  ```bash
+  ./build/morphy_viewer
+  ```
+- The chosen integrator and settings are printed at startup for verification.
 
-## Dynamics Overview
+## PID controller (on/off)
+- Default: world-frame position PID toward `(0, 0, 1)` m with per-rotor thrust saturation from the YAML (`propellers.thrust_max`).
+- Disable PID but keep viewer and contacts:
+  ```bash
+  MORPHY_DISABLE_PID=1 ./build/morphy_viewer
+  ```
+- Pure free fall (forces zeroed regardless of PID gains):
+  ```bash
+  MORPHY_FREE_FALL=1 ./build/morphy_viewer
+  ```
+- Re-enable after disabling:
+  ```bash
+  MORPHY_DISABLE_PID=0 ./build/morphy_viewer
+  ```
 
-The C++ dynamics mirror the CasADi script in `model_morphy/cleaned_code`. The state vector contains:
+## Contact model (plane or box)
+- Uses convex hulls in `graphics/hulls` (millimeters scaled to meters). Friction and CCD are supported.
+- Box workspace (default in the YAML):
+  ```bash
+  ./build/morphy_viewer
+  ```
+  Configure center/size in `contact.box_center` and `contact.box_size`; set `contact.box_enabled: true`.
+- Ground plane only:
+  ```bash
+  MORPHY_GROUND_Z=0.0 ./build/morphy_viewer   # overrides YAML ground height
+  ```
+  Or set `contact.box_enabled: false` and `contact.ground_height` in the YAML.
+- Tune stiffness/damping/activation distance without editing the file:
+  ```bash
+  MORPHY_CONTACT_K=200   MORPHY_CONTACT_D=40   MORPHY_CONTACT_D0=0.0015 ./build/morphy_viewer
+  ```
+- Toggle friction or CCD in the YAML (`contact.enable_friction`, `contact.enable_ccd`). Start height padding can be adjusted with:
+  ```bash
+  MORPHY_START_CLEARANCE=0.02 ./build/morphy_viewer
+  ```
 
-- Base position, quaternion, velocity, angular velocity (13 states)
-- Four arm quaternions (16 states)
-- Relative angular velocities in each arm frame (12 states)
+## Parameters at a glance (`model/drone_parameters.yaml`)
+- Mass/inertia (`mass`, `inertia`), propeller constants and spin direction (`propellers`), joint stiffness/damping (`morphing_joint`).
+- Rigid transforms for hinges and motors (`transforms.T_BH`, `T_HP`, `T_BP`).
+- Integrator selection + solver settings (`integrator`, `integrator_settings`).
+- Initial pose/velocity (`x0_pos`, `x0_rotation`, `v0`/`x0_vel`).
+- Contact setup (`contact.*`), including friction, CCD, box vs plane, and optional env overrides listed above.
+- Values are loaded at runtime; rebuilding is not required after edits.
 
-A block-linear system (18 unknowns) is assembled each step from:
+## Command-line tools (headless utilities)
+- Free-fall collision predictor (stops at plane crossing):
+  ```bash
+  ./build/collision_check [x y z [max_time]]
+  ```
+- Free-fall with penalty contacts and logging:
+  ```bash
+  ./build/contact_drop [drop_height [max_time]]
+  ```
+- Contact smoke test at a fixed height (prints penetration/forces):
+  ```bash
+  ./build/contact_smoketest [base_z]
+  ```
+- Hull / contact inspectors (print hull stats and sample contacts):
+  ```bash
+  ./build/debug_hull
+  ./build/debug_contacts
+  ./build/debug_rotation
+  ```
+- Optional convex hull generator (requires `ENABLE_MESH_HULL=ON` at configure time):
+  ```bash
+  HULL_IN_DIR=graphics/mesh_obj HULL_OUT_DIR=graphics/hulls ./build/mesh_convex_hull
+  ```
 
-1. Translational block for base linear acceleration.
-2. Rotational block for base angular acceleration (body frame).
-3. Four arm rotational blocks for the hinge dynamics.
-
-Solving this system returns world accelerations (`W_a_B`), angular accelerations (`W_omega_dot`) and the derivatives of the relative joint rates. Quaternions are propagated via the usual `0.5 * q ⊗ ω` relation, and all quaternions are renormalized after every RK4 substep.
-
-## Controller
-
-`DroneSimulationApp` maintains a PID controller in world coordinates:
-
-```
-a_cmd = Kp ∘ (p_ref - p) + Ki ∘ ∫(p_ref - p) dt + Kd ∘ (-v) + [0, 0, g]
-thrust_total = m_total * a_cmd.z
-```
-
-The total thrust is equally split between the four rotors and clamped to the maximum specified in the YAML (`propellers.thrust_max`). You can tweak the gains and target in `main.cpp`.
-
-## YAML Parameters
-
-All physical constants live in `model/drone_parameters.yaml`. Important sections:
-
-- `mass`, `inertia`: base and arm masses/inertias.
-- `propellers`: thrust and torque coefficients, spin direction, rotor inertia, max thrust.
-- `morphing_joint`: stiffness/damping of the morphing joints.
-- `transforms`: rigid transforms from base to hinge (`T_BH`), hinge to prop (`T_HP`), base to prop (`T_BP`).
-- `integrator`: one of `explicit_euler`, `rk4`, `implicit_euler`, `irk` (implicit midpoint).
-- `integrator_settings`: `dt`, `substeps`, `implicit_max_iterations`, `implicit_tolerance`, `implicit_fd_epsilon`.
-- `initial state`: `x0_pos`, `x0_rotation` and `v0`/`x0_vel` for base linear velocity.
-- `contact` environment: keep the classic ground plane via `contact.ground_height`, or enable an
-  axis-aligned box with `contact.box_enabled`, `contact.box_center` and `contact.box_size`
-  (defaults to a 0.3 m cube centered at the origin so the drone bounces on every wall). Set
-  `MORPHY_FREE_FALL=1` to let it simply drop and rebound without the PID.
-
-Editing this file does not require recompiling; the values are loaded at runtime.
-
-## Convex Hull Utility (optional)
-
-If you want to precompute convex hulls of the meshes:
-
-1) Install extra deps: `sudo apt install libcgal-dev libgmp-dev libmpfr-dev libboost-all-dev assimp-utils`.
-2) Convert STL → OBJ:
-   ```bash
-   mkdir -p graphics/mesh_obj
-   for f in graphics/meshes/*.[sS][tT][lL]; do
-     base=$(basename "${f%.*}")
-     assimp export "$f" "graphics/mesh_obj/${base}.obj"
-   done
-   ```
-3) Build the hull tool:
-   ```bash
-   cmake -S . -B build -DENABLE_MESH_HULL=ON
-   cmake --build build --target mesh_convex_hull
-   ```
-4) Run it (defaults to `graphics/mesh_obj` → `graphics/hulls`):
-   ```bash
-   HULL_IN_DIR=graphics/mesh_obj HULL_OUT_DIR=graphics/hulls ./build/mesh_convex_hull
-   ```
-The tool writes `*_hull.obj` you can load at runtime.
-
-## Troubleshooting
-
-- **Empty window / missing meshes**: ensure the URDF and meshes under `graphics/` are intact. The program prints a message if any mesh is missing.
-- **GLFW “failed to open display”**: set `MORPHY_POLYSCOPE_BACKEND=openGL_mock` for headless runs.
-- **Dynamics blow up**: the solver currently assumes the initial state is close to hover. Large impulses (e.g., setting high gains) can make the 18×18 system ill-conditioned; check console logs for diagnostics.
-
-## License
-
-Refer to the repository for licensing terms (if not specified, assume all rights reserved).
+## Notes and tips
+- Polyscope ground plane is off by default; enable it from the UI if needed.
+- `MORPHY_HULL_SCALE` can rescale hulls for the contact utilities; default is `0.001` (mm → m).
+- If dynamics blow up, check console logs for the 18×18 solve and verify your gains, timestep, and contact stiffness.*** End Patch

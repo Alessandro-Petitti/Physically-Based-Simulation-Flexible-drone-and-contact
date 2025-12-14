@@ -8,9 +8,9 @@ integrator_settings:
   implicit_fd_epsilon: 1.0e-6
 
 # Posizione iniziale
-x0_pos: [0.0, 0.0, 0.0]
+x0_pos: [0.0, 0.0, 0.5]
 # Velocità iniziale (m/s)
-v0: [5.0, 5.0, -7.0]
+v0: [0.0, 0.0, -0.0]
 
 # Rotazione iniziale: 90° attorno all'asse Y (pitch) - drone "di faccia"
 # Quaternione wxyz: [cos(45°), 0, sin(45°), 0] = [0.7071, 0, 0.7071, 0]
@@ -49,7 +49,7 @@ contact:
   enable_ccd: false  # Continuous Collision Detection - previene tunneling
   enable_friction: true  # abilita/disabilita attrito di Coulomb
   friction_coefficient: 0.8  # μ - coefficiente di attrito di Coulomb (tipico: 0.3-1.0)
-  box_enabled: true
+  box_enabled: false
   box_center: [0.0, 0.0, 0.0]
   box_size: [0.5, 0.4, 0.4]  # x, y, z in metri
   ground_height: 0.0  # usato solo se box_enabled = false
